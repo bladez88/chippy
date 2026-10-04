@@ -220,7 +220,11 @@ export class CoreStore implements ChippyStore {
       if (!carpool) { carpool = { id: randomUUID(), driverTripId: driver.id, participantTripIds: [], detourMinutes: 5 }; this.carpools.push(carpool) }
       carpool.participantTripIds.push(passenger.id); driver.carpoolStatus = 'MATCHED'; passenger.carpoolStatus = 'MATCHED'
       this.notify(passenger.userId, 'RIDE_ACCEPTED', 'Ride confirmed', `${this.user(driver.userId)?.name} accepted your ride request.`, carpool.id)
-    } else { passenger.carpoolStatus = 'LOOKING_FOR_RIDE'; this.notify(passenger.userId, decision === 'DECLINED' ? 'RIDE_DECLINED' : 'CARPOOL_CANCELLED', decision === 'DECLINED' ? 'Ride request declined' : 'Ride request cancelled', 'Your ride request was updated.', request.id) }
+    } else {
+      passenger.carpoolStatus = 'LOOKING_FOR_RIDE'
+      if (decision === 'DECLINED') this.notify(passenger.userId, 'RIDE_DECLINED', 'Ride request declined', 'Your ride request was updated.', request.id)
+      else this.notify(driver.userId, 'CARPOOL_CANCELLED', 'Ride request withdrawn', `${this.user(passenger.userId)?.name} withdrew their ride request.`, request.id)
+    }
     return this.requestDto(request, driver.userId === userId ? passenger.userId : driver.userId)
   }
   listNotifications(userId: string) { return this.notifications.filter((n) => n.userId === userId).sort((a, b) => b.createdAt.localeCompare(a.createdAt)).map(({ userId: _, ...n }) => n) }

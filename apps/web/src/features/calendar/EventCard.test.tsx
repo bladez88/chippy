@@ -15,4 +15,10 @@ describe('EventCard', () => {
     expect(screen.queryByText('Transit')).toBeNull()
     expect(screen.queryByText('2 passengers')).toBeNull()
   })
+
+  it('labels a requested ride as a pending carpool', () => {
+    render(<EventCard event={{ ...confirmed, kind: 'OWN_TRIP', carpoolStatus: 'REQUEST_PENDING', passengerCount: 0 }} onSelect={() => undefined}/>)
+    expect(screen.getByText('Carpool pending')).toBeTruthy()
+    expect(screen.queryByText('Carpooling')).toBeNull()
+  })
 })

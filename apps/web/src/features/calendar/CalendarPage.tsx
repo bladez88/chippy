@@ -23,7 +23,7 @@ export function CalendarPage() {
   const [selectedFriendIds, setSelectedFriendIds] = useState<string[]>([])
   const range = useMemo(() => rangeFor(view, date), [view, date]); const start = isoDate(range.start); const end = isoDate(range.end)
   const friendsQuery = useQuery({ queryKey: queryKeys.friends, queryFn: () => api<{ friends: FriendDto[] }>('/friends') })
-  const query = useQuery({ queryKey: queryKeys.calendar(start, end, selectedFriendIds), queryFn: () => api<{ events: CalendarEvent[] }>(`/calendar?start=${start}&end=${end}&timezone=${encodeURIComponent(user!.timezone)}${selectedFriendIds.length ? `&friendIds=${encodeURIComponent(selectedFriendIds.join(','))}` : ''}`) })
+  const query = useQuery({ queryKey: queryKeys.calendar(start, end, selectedFriendIds), queryFn: () => api<{ events: CalendarEvent[] }>(`/calendar?start=${start}&end=${end}&timezone=${encodeURIComponent(user!.timezone)}${selectedFriendIds.length ? `&friendIds=${encodeURIComponent(selectedFriendIds.join(','))}` : ''}`), refetchOnWindowFocus: 'always' })
   const update = (nextView: CalendarView, nextDate: Date) => { setViewState(nextView); setDate(nextDate); localStorage.setItem('chippy-calendar-view', nextView); setParams({ view: nextView, date: isoDate(nextDate) }) }
   const days = eachDayOfInterval({ start: range.start, end: range.end }); const events = colorFriendEvents(query.data?.events ?? [], selectedFriendIds)
   return <main className="page calendar-page">

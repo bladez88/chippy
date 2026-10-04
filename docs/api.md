@@ -24,3 +24,5 @@ Validation failures include a stable code, safe message, field errors when avail
 Potential-match calendar events include `originalArrivalAt`, `carpoolArrivalAt`, and a signed `arrivalDifferenceMinutes`. Positive differences mean the passenger would arrive later; negative differences mean earlier.
 
 Pending ride requests keep passenger pickup details private. The route comparison returns a generalized city-area label unless the pickup is within 150 metres of the driver's own origin; in that same-origin case, it reuses the driver's already-visible origin label without exposing the passenger's private label or address. Confirmed participants receive the exact pickup details through the trip route plan.
+
+`PATCH /ride-requests/:id/cancel` is requester-only. It marks the pending request as cancelled, restores the passenger trip to `LOOKING_FOR_RIDE`, and creates a withdrawal notification for the driver.

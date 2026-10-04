@@ -407,7 +407,12 @@ export class PrismaStore implements ChippyStore {
       } else {
         await tx.rideRequest.update({ where: { id }, data: { status: decision } })
         await tx.trip.update({ where: { id: request.passengerTripId }, data: { carpoolStatus: 'LOOKING_FOR_RIDE' } })
-        await tx.notification.create({ data: { userId: request.passengerTrip.userId, type: decision === 'DECLINED' ? 'RIDE_DECLINED' : 'CARPOOL_CANCELLED', title: decision === 'DECLINED' ? 'Ride request declined' : 'Ride request cancelled', body: 'Your ride request was updated.', referenceId: request.id } })
+        if (decision === 'DECLINED') {
+          await tx.notification.create({ data: { userId: request.passengerTrip.userId, type: 'RIDE_DECLINED', title: 'Ride request declined', body: 'Your ride request was updated.', referenceId: request.id } })
+        } else {
+          const passenger = await tx.user.findUniqueOrThrow({ where: { id: request.passengerTrip.userId } })
+          await tx.notification.create({ data: { userId: request.driverTrip.userId, type: 'CARPOOL_CANCELLED', title: 'Ride request withdrawn', body: `${passenger.name} withdrew their ride request.`, referenceId: request.id } })
+        }
       }
       return tx.rideRequest.findUniqueOrThrow({ where: { id } })
     })

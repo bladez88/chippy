@@ -6,6 +6,10 @@ Calendar is the home screen with day, week, and month views. Headings use three-
 
 A potential carpool may qualify through a close departure window or a close destination-arrival window. Match details compare the passenger's original arrival with the estimated carpool arrival and explicitly state how many minutes earlier or later the passenger would arrive.
 
+After requesting a ride, the passenger's own calendar event shows a pending-carpool state until the driver responds. Opening that event identifies the driver and lets the passenger withdraw the request. Withdrawal restores the trip to looking for a ride and sends the driver an in-app notification.
+
+While Chippy is visible, a lightweight ride-request heartbeat detects coordination changes within approximately five seconds and refreshes affected calendar, trip, notification, and map data. This makes new driver request badges, acceptances, declines, cancellations, and confirmed-carpool cards appear without a manual browser refresh while avoiding repeated route calculations when nothing changed. Returning to a backgrounded tab triggers an immediate refresh.
+
 Changing transportation mode recalculates the displayed route duration and route geometry through the selected backend routing adapter. Route durations are estimates and use a `~` label. Driving, walking, and cycling use provider-specific profiles; transit remains an approximation until a live timetable-capable transit provider is integrated.
 
 After a ride request is accepted, both participants' calendar cards present the trip as **Carpooling** while retaining each participant's original transportation mode in the underlying trip snapshot. Confirmed calendar cards omit the redundant passenger-count badge; passenger totals remain available in trip details.

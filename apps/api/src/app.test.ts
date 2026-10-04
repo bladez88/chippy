@@ -109,6 +109,18 @@ describe('Chippy API vertical slice', () => {
     const calendar = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}`).set('Cookie', driverCookie)
     expect(calendar.body.events.find((event: { sourceId: string }) => event.sourceId === 'trip-daniel').pendingRideRequestCount).toBe(1)
   })
+  it('shows a pending carpool to the requester and lets them withdraw it', async () => {
+    const created = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })
+    const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000)
+    const calendar = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}`).set('Cookie', cookie)
+    expect(calendar.body.events.find((event: { sourceId: string }) => event.sourceId === 'trip-jimmy').carpoolStatus).toBe('REQUEST_PENDING')
+
+    const cancelled = await request(app).patch(`/api/ride-requests/${created.body.request.id}/cancel`).set('Cookie', cookie)
+    expect(cancelled.status).toBe(200)
+    expect(cancelled.body.request.status).toBe('CANCELLED')
+    expect(store.trips.find((trip) => trip.id === 'trip-jimmy')?.carpoolStatus).toBe('LOOKING_FOR_RIDE')
+    expect(store.notifications.some((notification) => notification.userId === 'user-daniel' && notification.title === 'Ride request withdrawn')).toBe(true)
+  })
   it('removes an uncommitted trip from the calendar', async () => {
     const created = await request(app).post('/api/trips').set('Cookie', cookie).send({ origin: { label: 'Home', address: 'Burnaby, BC', latitude: 49.24, longitude: -122.98 }, destination: { label: 'Gym', address: 'Burnaby, BC', latitude: 49.25, longitude: -122.96 }, departureAt: new Date(Date.now() + 86400_000).toISOString(), timezone: 'America/Vancouver', transportationMode: 'WALKING', carpoolStatus: 'NONE' })
     const tripId = created.body.trips[0].id
