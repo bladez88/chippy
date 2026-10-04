@@ -148,11 +148,13 @@ Import the repository into Vercel and leave the project Root Directory at the re
 Configure these browser-visible build variables in the Vercel project:
 
 ```dotenv
-VITE_API_URL=https://api.example.tech/api
+VITE_API_URL=/api
 VITE_GOOGLE_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
 ```
 
-Replace `example.tech` with the deployed domain. `VITE_GOOGLE_CLIENT_ID` is optional; omit it to offer email/password sign-in only. The local demo controls are compiled out of production builds. Do not add `DATABASE_URL`, `JWT_SECRET`, or provider secrets to the frontend project. After changing a `VITE_` variable, redeploy because Vite embeds it during the build.
+The checked-in rewrite proxies `/api/*` from the Vercel deployment to `https://chippy-api.onrender.com/api/*`. Keeping browser requests on the frontend origin avoids cross-site session-cookie issues while the app uses its `vercel.app` domain. Set Render's `CLIENT_URL` to the deployed Vercel origin, such as `https://chippy-jet.vercel.app`.
+
+`VITE_GOOGLE_CLIENT_ID` is optional; omit it to offer email/password sign-in only. The local demo controls are compiled out of production builds. Do not add `DATABASE_URL`, `JWT_SECRET`, or provider secrets to the frontend project. After changing a `VITE_` variable, redeploy because Vite embeds it during the build.
 
 ## Commands
 
