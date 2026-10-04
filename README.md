@@ -9,6 +9,7 @@ Chippy is a mobile-first private carpool planner for friends. It combines recurr
 - Authentication supports email/password accounts, optional Google Identity Services, and a development-only two-user demo.
 - The API supports a credential-free in-memory store and a persistent Prisma/PostgreSQL/PostGIS store selected with `DATA_STORE`.
 - Trip creation, friendships, matching, ride requests, carpools, notifications, and map/calendar reads use the selected store. Multi-record ride and carpool transitions are transactional in the Prisma adapter.
+- Calendar users can compare one or more accepted friends through privacy-safe schedule blocks. Trip occurrences can be edited; coordination-changing edits leave or cancel affected carpools and notify the other participants.
 
 ## Quick start
 

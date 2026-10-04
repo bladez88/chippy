@@ -9,6 +9,7 @@ import type {
   TransportationMode,
   TripDto,
   TripRoutePlan,
+  UpdateTripInput,
   UserDto,
   EmailPasswordRegistrationInput,
 } from '@chippy/shared'
@@ -161,6 +162,57 @@ export class PrismaStore implements ChippyStore {
     })
   }
 
+  async updateTrip(userId: string, tripId: string, input: UpdateTripInput) {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const trip = await tx.trip.findFirst({ where: { id: tripId, userId } })
+        if (!trip) throw new DomainError('NOT_FOUND', 'Trip not found', 404)
+        const disruptsCoordination = trip.departureAt.toISOString() !== input.departureAt || trip.transportationMode !== input.transportationMode || trip.carpoolStatus !== input.carpoolStatus
+
+        if (disruptsCoordination) {
+          const carpool = await tx.carpool.findFirst({
+            where: { OR: [{ driverTripId: tripId }, { participants: { some: { tripId } } }] },
+            include: { driverTrip: true, participants: true },
+          })
+          if (carpool?.driverTripId === tripId) {
+            const driver = await tx.user.findUniqueOrThrow({ where: { id: userId } })
+            for (const participant of carpool.participants.filter((item) => item.role === 'PASSENGER')) {
+              await tx.trip.update({ where: { id: participant.tripId }, data: { carpoolStatus: 'LOOKING_FOR_RIDE' } })
+              await tx.notification.create({ data: { userId: participant.userId, type: 'CARPOOL_CANCELLED', title: 'Drive changed', body: `${driver.name} changed the drive. Your original trip is available again.`, referenceId: carpool.id } })
+            }
+            await tx.rideRequest.updateMany({ where: { driverTripId: tripId, status: 'ACCEPTED' }, data: { status: 'CANCELLED' } })
+            await tx.carpool.delete({ where: { id: carpool.id } })
+          } else if (carpool) {
+            await tx.carpoolParticipant.delete({ where: { carpoolId_tripId: { carpoolId: carpool.id, tripId } } })
+            await tx.rideRequest.updateMany({ where: { driverTripId: carpool.driverTripId, passengerTripId: tripId, status: 'ACCEPTED' }, data: { status: 'CANCELLED' } })
+            const passenger = await tx.user.findUniqueOrThrow({ where: { id: userId } })
+            await tx.notification.create({ data: { userId: carpool.driverTrip.userId, type: 'CARPOOL_CANCELLED', title: 'Passenger changed trip', body: `${passenger.name} changed their trip and left the carpool.`, referenceId: carpool.id } })
+            const remaining = await tx.carpoolParticipant.count({ where: { carpoolId: carpool.id, role: 'PASSENGER' } })
+            await tx.trip.update({ where: { id: carpool.driverTripId }, data: { carpoolStatus: remaining ? 'MATCHED' : 'OFFERING_RIDE' } })
+            if (!remaining) await tx.carpool.delete({ where: { id: carpool.id } })
+          }
+
+          const pending = await tx.rideRequest.findMany({ where: { status: 'PENDING', OR: [{ driverTripId: tripId }, { passengerTripId: tripId }] }, include: { passengerTrip: true } })
+          await tx.rideRequest.updateMany({ where: { id: { in: pending.map((item) => item.id) } }, data: { status: 'CANCELLED' } })
+          for (const request of pending.filter((item) => item.driverTripId === tripId)) {
+            await tx.trip.update({ where: { id: request.passengerTripId }, data: { carpoolStatus: 'LOOKING_FOR_RIDE' } })
+            await tx.notification.create({ data: { userId: request.passengerTrip.userId, type: 'CARPOOL_CANCELLED', title: 'Ride request cancelled', body: 'The driver changed this trip. You can look for another ride.', referenceId: request.id } })
+          }
+        }
+
+        const updated = await tx.trip.update({ where: { id: tripId }, data: {
+          departureAt: new Date(input.departureAt), timezone: input.timezone,
+          transportationMode: input.transportationMode, carpoolStatus: input.carpoolStatus,
+          availableSeats: input.carpoolStatus === 'OFFERING_RIDE' ? input.availableSeats : null,
+        } })
+        return tripDto(updated)
+      })
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new DomainError('DATE_CONFLICT', 'Another occurrence already exists at that time', 409)
+      throw error
+    }
+  }
+
   async friends(userId: string): Promise<FriendDto[]> {
     const friendships = await this.prisma.friendship.findMany({
       where: { OR: [{ requesterId: userId }, { addresseeId: userId }] },
@@ -196,7 +248,7 @@ export class PrismaStore implements ChippyStore {
     if (!result.count) throw new DomainError('NOT_FOUND', 'Friendship not found', 404)
   }
 
-  async calendar(userId: string, start: string, end: string, timezone = 'America/Vancouver'): Promise<CalendarEvent[]> {
+  async calendar(userId: string, start: string, end: string, timezone = 'America/Vancouver', friendIds: string[] = []): Promise<CalendarEvent[]> {
     const from = DateTime.fromISO(start, { zone: timezone }).startOf('day').toUTC().toJSDate()
     const to = DateTime.fromISO(end, { zone: timezone }).endOf('day').toUTC().toJSDate()
     const ownTrips = (await this.prisma.trip.findMany({ where: { userId, departureAt: { gte: from, lte: to } }, orderBy: { departureAt: 'asc' } })).map(tripDto)
@@ -213,7 +265,14 @@ export class PrismaStore implements ChippyStore {
       const friendTrip = match.driver.userId === userId ? match.passenger : match.driver
       return { ...this.event(friendTrip, 'POTENTIAL_MATCH'), id: `match-${trip.id}-${friendTrip.id}`, sourceId: `${match.driver.id}:${match.passenger.id}`, title: `${match.friend.name} → ${friendTrip.destination.label}`, subtitle: `Potential carpool · ${match.detourMinutes} min detour`, friend: match.friend, detourMinutes: match.detourMinutes, distanceMeters: match.distanceMeters, originalArrivalAt: match.originalArrivalAt, carpoolArrivalAt: match.carpoolArrivalAt, pickupAt: match.pickupAt, color: '#f28b5b' } satisfies CalendarEvent
     })))
-    return [...own, ...matchGroups.flat()].sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    const accepted = friendIds.length ? await this.prisma.friendship.findMany({ where: { status: 'ACCEPTED', OR: [
+      { requesterId: userId, addresseeId: { in: friendIds } },
+      { addresseeId: userId, requesterId: { in: friendIds } },
+    ] } }) : []
+    const acceptedIds = accepted.map((item) => item.requesterId === userId ? item.addresseeId : item.requesterId)
+    const friendRows = acceptedIds.length ? await this.prisma.trip.findMany({ where: { userId: { in: acceptedIds }, departureAt: { gte: from, lte: to } }, include: { user: true }, orderBy: { departureAt: 'asc' } }) : []
+    const friendEvents = friendRows.map((row) => ({ ...this.event(tripDto(row), 'FRIEND_TRIP'), title: `${row.user.name}'s trip`, subtitle: 'Friend schedule · details private', originLabel: 'Private origin', destinationLabel: 'Private destination', friend: userDto(row.user), color: '#7c6ee6' } satisfies CalendarEvent))
+    return [...own, ...matchGroups.flat(), ...friendEvents].sort((a, b) => a.startsAt.localeCompare(b.startsAt))
   }
 
   async matches(userId: string, tripId: string, allowPendingPassenger = false): Promise<Array<MatchResult & { friend: UserDto }>> {

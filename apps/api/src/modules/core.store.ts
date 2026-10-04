@@ -1,4 +1,4 @@
-import type { CalendarEvent, CarpoolStatus, CreateTripInput, EmailPasswordRegistrationInput, FriendDto, Location, NotificationDto, RideRequestDto, TransportationMode, TripDto, TripRoutePlan, UserDto } from '@chippy/shared'
+import type { CalendarEvent, CarpoolStatus, CreateTripInput, EmailPasswordRegistrationInput, FriendDto, Location, NotificationDto, RideRequestDto, TransportationMode, TripDto, TripRoutePlan, UpdateTripInput, UserDto } from '@chippy/shared'
 import { DateTime } from 'luxon'
 import { randomUUID } from 'node:crypto'
 import type { RoutingService } from '../integrations/routing/routing-service.js'
@@ -73,6 +73,29 @@ export class CoreStore implements ChippyStore {
     this.trips.push(...created)
     return created
   }
+  updateTrip(userId: string, tripId: string, input: UpdateTripInput) {
+    const trip = this.trips.find((item) => item.id === tripId && item.userId === userId)
+    if (!trip) throw new DomainError('NOT_FOUND', 'Trip not found', 404)
+    const disruptsCoordination = trip.departureAt !== input.departureAt || trip.transportationMode !== input.transportationMode || trip.carpoolStatus !== input.carpoolStatus
+    if (disruptsCoordination) {
+      const carpool = this.carpools.find((item) => item.driverTripId === tripId || item.participantTripIds.includes(tripId))
+      if (carpool) {
+        if (carpool.driverTripId === tripId) this.cancelCarpool(userId, carpool.id)
+        else this.removePassengerFromCarpool(carpool.id, tripId, userId)
+      }
+      this.requests.filter((request) => (request.driverTripId === tripId || request.passengerTripId === tripId) && request.status === 'PENDING').forEach((request) => {
+        request.status = 'CANCELLED'
+        const passenger = this.trips.find((item) => item.id === request.passengerTripId)
+        if (passenger && passenger.id !== tripId) passenger.carpoolStatus = 'LOOKING_FOR_RIDE'
+      })
+    }
+    trip.departureAt = input.departureAt
+    trip.timezone = input.timezone
+    trip.transportationMode = input.transportationMode
+    trip.carpoolStatus = input.carpoolStatus
+    trip.availableSeats = input.carpoolStatus === 'OFFERING_RIDE' ? input.availableSeats : undefined
+    return trip
+  }
   friends(userId: string): FriendDto[] {
     return this.friendships.filter((f) => f.requesterId === userId || f.addresseeId === userId).map((f) => {
       const otherId = f.requesterId === userId ? f.addresseeId : f.requesterId
@@ -101,7 +124,7 @@ export class CoreStore implements ChippyStore {
       return driver?.userId === userId || carpool.participantTripIds.some((id) => this.trips.find((trip) => trip.id === id)?.userId === userId)
     })
   }
-  async calendar(userId: string, start: string, end: string): Promise<CalendarEvent[]> {
+  async calendar(userId: string, start: string, end: string, _timezone = 'America/Vancouver', friendIds: string[] = []): Promise<CalendarEvent[]> {
     const from = DateTime.fromISO(start).startOf('day').toMillis(); const to = DateTime.fromISO(end).endOf('day').toMillis()
     const ownTrips = this.trips.filter((trip) => trip.userId === userId && within(trip.departureAt, from, to))
     const own = await Promise.all(ownTrips.map(async (trip) => { const plan = this.routePlan(trip); const route = await this.routing.getRoute(plan.stops, plan.driverTrip.transportationMode === 'TRANSIT' ? 'DRIVING' : plan.driverTrip.transportationMode); const pendingRideRequestCount = this.requests.filter((request) => request.driverTripId === trip.id && request.status === 'PENDING').length; return this.event(trip, trip.carpoolStatus === 'MATCHED' ? 'CONFIRMED_CARPOOL' : 'OWN_TRIP', Math.max(1, Math.round(route.durationSeconds / 60)), plan.passengers.length, pendingRideRequestCount) }))
@@ -110,7 +133,12 @@ export class CoreStore implements ChippyStore {
       return { ...this.event(friendTrip, 'POTENTIAL_MATCH'), id: `match-${trip.id}-${friendTrip.id}`, sourceId: `${driver.id}:${passenger.id}`, title: `${this.user(friendTrip.userId)?.name} → ${friendTrip.destination.label}`, subtitle: `Potential carpool · ${detourMinutes} min detour`, friend: this.user(friendTrip.userId), detourMinutes, distanceMeters, originalArrivalAt, carpoolArrivalAt, pickupAt, color: '#f28b5b' } satisfies CalendarEvent
     })))
     const matches = matchGroups.flat()
-    return [...own, ...matches].sort((a, b) => a.startsAt.localeCompare(b.startsAt))
+    const acceptedIds = new Set(this.friends(userId).filter((friend) => friend.status === 'ACCEPTED' && friendIds.includes(friend.id)).map((friend) => friend.id))
+    const friendEvents = this.trips.filter((trip) => acceptedIds.has(trip.userId) && within(trip.departureAt, from, to)).map((trip) => {
+      const friend = this.user(trip.userId)!
+      return { ...this.event(trip, 'FRIEND_TRIP'), title: `${friend.name}'s trip`, subtitle: 'Friend schedule · details private', originLabel: 'Private origin', destinationLabel: 'Private destination', friend, color: '#7c6ee6' } satisfies CalendarEvent
+    })
+    return [...own, ...matches, ...friendEvents].sort((a, b) => a.startsAt.localeCompare(b.startsAt))
   }
   private event(trip: InternalTrip, kind: CalendarEvent['kind'], estimatedDurationMinutes?: number, passengerCount = 0, pendingRideRequestCount = 0): CalendarEvent {
     return { id: `${kind}-${trip.id}`, sourceId: trip.id, kind, title: `${trip.origin.label} → ${trip.destination.label}`, subtitle: `${labelMode(trip.transportationMode)}${trip.carpoolStatus === 'OFFERING_RIDE' ? ' · Offering a ride' : trip.carpoolStatus === 'LOOKING_FOR_RIDE' ? ' · Looking for a ride' : ''}`, startsAt: trip.departureAt, endsAt: trip.estimatedArrivalAt, transportationMode: trip.transportationMode, carpoolStatus: trip.carpoolStatus, originLabel: trip.origin.label, destinationLabel: trip.destination.label, passengerCount, pendingRideRequestCount, estimatedDurationMinutes, color: kind === 'CONFIRMED_CARPOOL' ? '#167c63' : '#5c69d8' }

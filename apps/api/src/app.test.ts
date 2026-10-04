@@ -14,7 +14,10 @@ describe('Chippy API vertical slice', () => {
     store.carpools.length = 0
     store.notifications.length = 0
     store.trips.find((trip) => trip.id === 'trip-jimmy')!.carpoolStatus = 'LOOKING_FOR_RIDE'
+    store.trips.find((trip) => trip.id === 'trip-jimmy')!.transportationMode = 'TRANSIT'
     store.trips.find((trip) => trip.id === 'trip-daniel')!.carpoolStatus = 'OFFERING_RIDE'
+    store.trips.find((trip) => trip.id === 'trip-daniel')!.transportationMode = 'DRIVING'
+    store.trips.find((trip) => trip.id === 'trip-daniel')!.availableSeats = 3
   })
   it('rejects unauthenticated calendar reads', async () => expect((await request(app).get('/api/calendar?start=2026-01-01&end=2026-01-31')).status).toBe(401))
   it('returns the authenticated profile', async () => expect((await request(app).get('/api/auth/me').set('Cookie', cookie)).body.user.email).toBe('jimmy@chippy.local'))
@@ -43,6 +46,15 @@ describe('Chippy API vertical slice', () => {
     expect(rejected.body.error).toMatchObject({ code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect' })
   })
   it('returns calendar events', async () => { const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000); const response = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}`).set('Cookie', cookie); expect(response.status).toBe(200); expect(response.body.events.length).toBeGreaterThan(0) })
+  it('compares accepted friend schedules without exposing private locations', async () => {
+    const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000)
+    const response = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}&friendIds=user-daniel`).set('Cookie', cookie)
+    const friendEvent = response.body.events.find((event: { kind: string }) => event.kind === 'FRIEND_TRIP')
+    expect(friendEvent).toMatchObject({ friend: { id: 'user-daniel', name: 'Daniel' }, originLabel: 'Private origin', destinationLabel: 'Private destination' })
+    expect(JSON.stringify(friendEvent)).not.toContain('Daniel’s neighbourhood')
+    const untrusted = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}&friendIds=user-not-a-friend`).set('Cookie', cookie)
+    expect(untrusted.body.events.some((event: { kind: string }) => event.kind === 'FRIEND_TRIP')).toBe(false)
+  })
   it('creates a ride request and gives the driver a route comparison', async () => {
     const response = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })
     expect(response.status).toBe(201); expect(response.body.request.status).toBe('PENDING')
@@ -74,6 +86,18 @@ describe('Chippy API vertical slice', () => {
     expect(plan.body.plan.role).toBe('PASSENGER')
     expect(plan.body.plan.pickupAt).toBeTruthy()
     expect(plan.body.plan.stops.map((stop: { kind: string }) => stop.kind)).toEqual(['ORIGIN', 'PICKUP', 'DESTINATION'])
+  })
+  it('restores passengers and notifies them when a driver changes transport mode', async () => {
+    const created = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })
+    const driverLogin = await request(app).post('/api/auth/dev-login').send({ userId: 'user-daniel' }); const driverCookie = driverLogin.headers['set-cookie']?.[0] ?? ''
+    await request(app).patch(`/api/ride-requests/${created.body.request.id}/accept`).set('Cookie', driverCookie)
+    const driverTrip = store.trips.find((trip) => trip.id === 'trip-daniel')!
+    const response = await request(app).patch('/api/trips/trip-daniel').set('Cookie', driverCookie).send({ departureAt: driverTrip.departureAt, timezone: driverTrip.timezone, transportationMode: 'TRANSIT', carpoolStatus: 'NONE' })
+    expect(response.status).toBe(200)
+    expect(response.body.trip).toMatchObject({ transportationMode: 'TRANSIT', carpoolStatus: 'NONE' })
+    expect(store.trips.find((trip) => trip.id === 'trip-jimmy')?.carpoolStatus).toBe('LOOKING_FOR_RIDE')
+    expect(store.carpools).toHaveLength(0)
+    expect(store.notifications.some((notification) => notification.userId === 'user-jimmy' && notification.type === 'CARPOOL_CANCELLED')).toBe(true)
   })
   it('lets a driver remove a passenger and restores the passenger trip', async () => {
     const created = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })

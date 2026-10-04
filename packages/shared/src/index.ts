@@ -4,7 +4,7 @@ export const transportationModes = ['DRIVING', 'TRANSIT', 'WALKING', 'CYCLING'] 
 export const carpoolStatuses = ['NONE', 'LOOKING_FOR_RIDE', 'OFFERING_RIDE', 'REQUEST_PENDING', 'MATCHED'] as const
 export const rideRequestStatuses = ['PENDING', 'ACCEPTED', 'DECLINED', 'CANCELLED'] as const
 export const friendshipStatuses = ['PENDING', 'ACCEPTED', 'BLOCKED'] as const
-export const calendarEventKinds = ['OWN_TRIP', 'CONFIRMED_CARPOOL', 'POTENTIAL_MATCH'] as const
+export const calendarEventKinds = ['OWN_TRIP', 'CONFIRMED_CARPOOL', 'POTENTIAL_MATCH', 'FRIEND_TRIP'] as const
 
 export const TransportationModeSchema = z.enum(transportationModes)
 export const CarpoolStatusSchema = z.enum(carpoolStatuses)
@@ -56,6 +56,19 @@ export const CreateTripSchema = TripBaseSchema.extend({
   }
 })
 export type CreateTripInput = z.infer<typeof CreateTripSchema>
+
+export const UpdateTripSchema = z.object({
+  departureAt: z.iso.datetime(),
+  timezone: z.string().min(1),
+  transportationMode: TransportationModeSchema,
+  carpoolStatus: z.enum(['NONE', 'LOOKING_FOR_RIDE', 'OFFERING_RIDE']),
+  availableSeats: z.number().int().min(1).max(8).optional(),
+}).superRefine((value, context) => {
+  if (value.carpoolStatus === 'OFFERING_RIDE' && value.transportationMode !== 'DRIVING') {
+    context.addIssue({ code: 'custom', path: ['carpoolStatus'], message: 'Only driving trips can offer rides' })
+  }
+})
+export type UpdateTripInput = z.infer<typeof UpdateTripSchema>
 
 export const UserSchema = z.object({
   id: z.string(), email: z.email(), name: z.string(), avatarUrl: z.string().nullable(), timezone: z.string(),

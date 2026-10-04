@@ -6,4 +6,4 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>
 }
-export const queryKeys = { me: ['me'] as const, calendar: (start: string, end: string) => ['calendar', start, end] as const, friends: ['friends'] as const, notifications: ['notifications'] as const, requests: ['ride-requests'] as const, map: ['map'] as const }
+export const queryKeys = { me: ['me'] as const, calendar: (start: string, end: string, friendIds: string[] = []) => ['calendar', start, end, [...friendIds].sort().join(',')] as const, friends: ['friends'] as const, notifications: ['notifications'] as const, requests: ['ride-requests'] as const, map: ['map'] as const }

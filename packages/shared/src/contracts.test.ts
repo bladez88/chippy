@@ -1,10 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { CreateTripSchema, EmailPasswordRegistrationSchema, EmailPasswordSignInSchema, transportationModes } from './index.js'
+import { CreateTripSchema, EmailPasswordRegistrationSchema, EmailPasswordSignInSchema, UpdateTripSchema, transportationModes } from './index.js'
 
 describe('shared contracts', () => {
   it('keeps transportation modes stable', () => expect(transportationModes).toEqual(['DRIVING', 'TRANSIT', 'WALKING', 'CYCLING']))
   it('rejects a non-driving ride offer', () => {
     expect(CreateTripSchema.safeParse({ origin: { label: 'A', address: 'A', latitude: 0, longitude: 0 }, destination: { label: 'B', address: 'B', latitude: 1, longitude: 1 }, departureAt: new Date().toISOString(), timezone: 'America/Vancouver', transportationMode: 'WALKING', carpoolStatus: 'OFFERING_RIDE' }).success).toBe(false)
+  })
+  it('applies the same ride-offer invariant to trip edits', () => {
+    expect(UpdateTripSchema.safeParse({ departureAt: new Date().toISOString(), timezone: 'America/Vancouver', transportationMode: 'TRANSIT', carpoolStatus: 'OFFERING_RIDE', availableSeats: 2 }).success).toBe(false)
   })
   it('normalizes email credentials at the contract boundary', () => {
     expect(EmailPasswordSignInSchema.parse({ email: '  Alex@Example.COM ', password: 'long-enough-password' }).email).toBe('alex@example.com')

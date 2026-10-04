@@ -8,6 +8,7 @@ import type {
   TransportationMode,
   TripDto,
   TripRoutePlan,
+  UpdateTripInput,
   UserDto,
   EmailPasswordRegistrationInput,
 } from '@chippy/shared'
@@ -55,12 +56,13 @@ export interface ChippyStore {
   findOrCreateGoogleUser(profile: { email: string; name: string; avatarUrl: string | null }): MaybePromise<UserDto>
   listTrips(userId: string): MaybePromise<TripDto[]>
   createTrips(userId: string, input: CreateTripInput): MaybePromise<TripDto[]>
+  updateTrip(userId: string, tripId: string, input: UpdateTripInput): MaybePromise<TripDto>
   deleteTrip(userId: string, tripId: string): MaybePromise<void>
   friends(userId: string): MaybePromise<FriendDto[]>
   requestFriend(userId: string, email: string): MaybePromise<void>
   updateFriend(userId: string, id: string, status: 'ACCEPTED' | 'BLOCKED'): MaybePromise<void>
   removeFriend(userId: string, id: string): MaybePromise<void>
-  calendar(userId: string, start: string, end: string, timezone?: string): Promise<CalendarEvent[]>
+  calendar(userId: string, start: string, end: string, timezone?: string, friendIds?: string[]): Promise<CalendarEvent[]>
   matches(userId: string, tripId: string): Promise<MatchResult[]>
   createRideRequest(userId: string, driverTripId: string, passengerTripId: string, fuelContributionAmount: number | null): Promise<RideRequestDto>
   rideRequests(userId: string): Promise<RideRequestDto[]>

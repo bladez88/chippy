@@ -3,7 +3,7 @@ import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { CreateTripSchema, EmailPasswordRegistrationSchema, EmailPasswordSignInSchema } from '@chippy/shared'
+import { CreateTripSchema, EmailPasswordRegistrationSchema, EmailPasswordSignInSchema, UpdateTripSchema } from '@chippy/shared'
 import { env } from './config/env.js'
 import { DomainError } from './modules/core.store.js'
 import { store, storeKind } from './modules/runtime.store.js'
@@ -61,11 +61,12 @@ app.get('/api/auth/me', requireAuth, async (req, res, next) => { try { res.json(
 app.use('/api', requireAuth)
 app.get('/api/trips', async (req, res, next) => { try { res.json({ trips: await store.listTrips(req.userId!) }) } catch (error) { next(error) } })
 app.post('/api/trips', async (req, res, next) => { try { const trips = await store.createTrips(req.userId!, CreateTripSchema.parse(req.body)); res.status(201).json({ trips }) } catch (error) { next(error) } })
+app.patch('/api/trips/:id', async (req, res, next) => { try { const trip = await store.updateTrip(req.userId!, req.params.id, UpdateTripSchema.parse(req.body)); res.json({ trip }) } catch (error) { next(error) } })
 app.delete('/api/trips/:id', async (req, res, next) => { try { await store.deleteTrip(req.userId!, req.params.id); res.status(204).end() } catch (error) { next(error) } })
 app.get('/api/trips/:id/route-plan', async (req, res, next) => { try { res.json({ plan: await store.tripRoutePlan(req.userId!, req.params.id) }) } catch (error) { next(error) } })
 app.post('/api/schedules', async (req, res, next) => { try { const parsed = CreateTripSchema.parse(req.body); if (!parsed.recurrence) throw new DomainError('RECURRENCE_REQUIRED', 'A recurring schedule needs recurrence dates and weekdays', 400); res.status(201).json({ trips: await store.createTrips(req.userId!, parsed) }) } catch (error) { next(error) } })
 app.get('/api/trips/:id/matches', async (req, res, next) => { try { res.json({ matches: await store.matches(req.userId!, req.params.id) }) } catch (error) { next(error) } })
-app.get('/api/calendar', async (req, res, next) => { try { const query = z.object({ start: z.iso.date(), end: z.iso.date(), timezone: z.string().default('America/Vancouver') }).parse(req.query); res.json({ events: await store.calendar(req.userId!, query.start, query.end, query.timezone) }) } catch (error) { next(error) } })
+app.get('/api/calendar', async (req, res, next) => { try { const query = z.object({ start: z.iso.date(), end: z.iso.date(), timezone: z.string().default('America/Vancouver'), friendIds: z.string().max(1000).optional() }).parse(req.query); const friendIds = [...new Set(query.friendIds?.split(',').filter(Boolean) ?? [])].slice(0, 20); res.json({ events: await store.calendar(req.userId!, query.start, query.end, query.timezone, friendIds) }) } catch (error) { next(error) } })
 app.get('/api/locations/search', async (req, res, next) => { try { const query = z.object({ q: z.string().trim().min(2).max(120), latitude: z.coerce.number().min(-90).max(90).optional(), longitude: z.coerce.number().min(-180).max(180).optional() }).parse(req.query); const focus = query.latitude !== undefined && query.longitude !== undefined ? { latitude: query.latitude, longitude: query.longitude } : { latitude: 49.25, longitude: -122.96 }; res.json({ locations: await routingService.searchLocations(query.q, focus) }) } catch (error) { next(error) } })
 
 app.get('/api/friends', async (req, res, next) => { try { res.json({ friends: await store.friends(req.userId!) }) } catch (error) { next(error) } })
