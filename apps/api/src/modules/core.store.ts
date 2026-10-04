@@ -1,6 +1,6 @@
 import type { CalendarEvent, CarpoolStatus, CreateTripInput, FriendDto, Location, NotificationDto, RideRequestDto, TransportationMode, TripDto, UserDto } from '@chippy/shared'
 import { DateTime } from 'luxon'
-import { randomUUID } from 'node:crypto'
+import { randomBytes, randomUUID, scrypt as scryptCallback, timingSafeEqual } from 'node:crypto'
 
 type InternalTrip = TripDto
 type Friendship = { id: string; requesterId: string; addresseeId: string; status: 'PENDING' | 'ACCEPTED' | 'BLOCKED' }
@@ -12,6 +12,7 @@ const now = DateTime.now().setZone('America/Vancouver')
 const at = (days: number, hour: number, minute: number) => now.plus({ days }).startOf('day').set({ hour, minute }).toUTC().toISO()!
 
 export class CoreStore {
+  private passwordHashes = new Map<string, string>()
   users: UserDto[] = [
     { id: 'user-jimmy', email: 'jimmy@chippy.local', name: 'Jimmy', avatarUrl: null, timezone: 'America/Vancouver' },
     { id: 'user-daniel', email: 'daniel@chippy.local', name: 'Daniel', avatarUrl: null, timezone: 'America/Vancouver' },
@@ -30,6 +31,21 @@ export class CoreStore {
   }
 
   user(id: string) { return this.users.find((user) => user.id === id) }
+  async createAccount(email: string, name: string, password: string) {
+    if (this.users.some((user) => user.email.toLowerCase() === email)) throw new DomainError('EMAIL_IN_USE', 'An account with that email already exists', 409)
+    const passwordHash = await hashPassword(password)
+    if (this.users.some((user) => user.email.toLowerCase() === email)) throw new DomainError('EMAIL_IN_USE', 'An account with that email already exists', 409)
+    const user: UserDto = { id: randomUUID(), email, name, avatarUrl: null, timezone: 'America/Vancouver' }
+    this.users.push(user)
+    this.passwordHashes.set(user.id, passwordHash)
+    return user
+  }
+  async authenticateAccount(email: string, password: string) {
+    const user = this.users.find((item) => item.email.toLowerCase() === email)
+    const passwordHash = user ? this.passwordHashes.get(user.id) : undefined
+    if (!user || !passwordHash || !(await verifyPassword(password, passwordHash))) throw new DomainError('INVALID_CREDENTIALS', 'Email or password is incorrect', 401)
+    return user
+  }
   createTrips(userId: string, input: CreateTripInput) {
     const dates: string[] = []
     if (input.recurrence) {
@@ -142,3 +158,24 @@ const labelMode = (mode: TransportationMode) => ({ DRIVING: 'Driving', TRANSIT: 
 const haversine = (a: Location, b: Location) => { const rad = (v: number) => v * Math.PI / 180; const dLat = rad(b.latitude - a.latitude); const dLng = rad(b.longitude - a.longitude); const h = Math.sin(dLat/2)**2 + Math.cos(rad(a.latitude))*Math.cos(rad(b.latitude))*Math.sin(dLng/2)**2; return 6371000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1-h)) }
 export class DomainError extends Error { constructor(public code: string, message: string, public status: number) { super(message) } }
 export const store = new CoreStore()
+
+const scrypt = (password: string, salt: Buffer) => new Promise<Buffer>((resolve, reject) => {
+  scryptCallback(password, salt, 64, { N: 16_384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 }, (error, derivedKey) => {
+    if (error) reject(error)
+    else resolve(derivedKey)
+  })
+})
+async function hashPassword(password: string) {
+  const salt = randomBytes(16)
+  const hash = await scrypt(password, salt)
+  return `scrypt$16384$${salt.toString('base64')}$${hash.toString('base64')}`
+}
+async function verifyPassword(password: string, storedHash: string) {
+  const [algorithm, cost, saltText, hashText, extra] = storedHash.split('$')
+  if (algorithm !== 'scrypt' || cost !== '16384' || !saltText || !hashText || extra !== undefined) return false
+  const salt = Buffer.from(saltText, 'base64')
+  const expectedHash = Buffer.from(hashText, 'base64')
+  if (salt.length !== 16 || expectedHash.length !== 64) return false
+  const actualHash = await scrypt(password, salt)
+  return timingSafeEqual(actualHash, expectedHash)
+}

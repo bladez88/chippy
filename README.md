@@ -6,7 +6,8 @@ Chippy is a mobile-first private carpool planner for friends. It combines recurr
 
 - The web app uses Leaflet and OpenStreetMap raster tiles.
 - Demo routes and detour estimates are deterministic; they are not live road routes yet.
-- Authentication supports a local two-user demo and Google Identity Services when configured.
+- Authentication supports email/password accounts, a local two-user demo, and optional Google Identity Services.
+- Email/password accounts are held in the API's in-memory store and are lost when the API restarts; persistent account storage is not wired up yet.
 - Application data currently lives in an in-memory store and resets whenever the API restarts.
 - Prisma, PostgreSQL/PostGIS, and Docker Compose are prepared, but the API repository is not yet wired to PostgreSQL.
 
@@ -21,7 +22,7 @@ cp apps/web/.env.example apps/web/.env
 npm run dev
 ```
 
-Open `http://localhost:5173`. Use **Demo as Jimmy** to request Daniel's seeded ride. Log out and use **Demo as Daniel** to accept it.
+Open `http://localhost:5173` to create an account or sign in with email and password. For the seeded walkthrough, use **Demo as Jimmy** to request Daniel's ride, then log out and use **Demo as Daniel** to accept it.
 
 The demo requires no cloud credentials.
 
@@ -45,9 +46,9 @@ Generate a local session secret and place the result in `apps/api/.env` as `JWT_
 openssl rand -base64 32
 ```
 
-### Google sign-in
+### Optional Google sign-in
 
-Create a Google OAuth **Web application** client and allow `http://localhost:5173` as a JavaScript origin. Put the client ID—not the client secret—in both files:
+Email/password registration and sign-in work without Google credentials. To additionally show Google sign-in, configure a Google OAuth **Web application** client and allow `http://localhost:5173` as a JavaScript origin. Put the client ID—not the client secret—in both files:
 
 ```dotenv
 # apps/web/.env
