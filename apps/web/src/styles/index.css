@@ -41,3 +41,6 @@
 
 /* Normalize native date/time controls to the same field size as selects. */
 .date-time-row input[type="date"],.date-time-row input[type="time"]{-webkit-appearance:none;appearance:none;display:block;inline-size:100%;min-inline-size:0;block-size:50px;min-block-size:50px;max-block-size:50px;line-height:50px;padding-block:0}.date-time-row input[type="date"]::-webkit-date-and-time-value,.date-time-row input[type="time"]::-webkit-date-and-time-value{display:flex;align-items:center;height:100%;margin:0;text-align:left}.date-time-row input[type="date"]::-webkit-datetime-edit,.date-time-row input[type="time"]::-webkit-datetime-edit{padding:0}
+
+/* Keep the light logo distinct from the warm page background. */
+.brand-mark{width:44px;height:44px;padding:3px;border:1px solid rgba(216,115,63,.45);border-radius:14px;background:var(--orange);box-shadow:0 4px 12px rgba(216,115,63,.18)}

@@ -21,6 +21,7 @@ describe('LoginPage', () => {
   it('uses the Chippy logo in the brand header', () => {
     const { container } = render(<LoginPage />)
     expect(container.querySelector<HTMLImageElement>('.brand-mark')?.getAttribute('src')).toBe('/chippy-icon-192.png')
+    expect(screen.getByText('More friends, more rides')).toBeTruthy()
   })
 
   it('signs in with email and password', async () => {

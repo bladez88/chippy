@@ -48,7 +48,7 @@ export function LoginPage() {
   return <main className="login-page">
     <div className="brand"><img className="brand-mark" src="/chippy-icon-192.png" alt=""/><span>chippy</span></div>
     <section className="login-card">
-      <div className="eyebrow">Carpools, minus the group chat chaos</div>
+      <div className="eyebrow">More friends, more rides</div>
       <h1>Going the same way?</h1>
       <p className="lead">Share your schedule with friends, spot overlapping trips, and make the ride happen.</p>
       <div className="feature-row"><span><CalendarDays/>Plan together</span><span><MapPin/>Meet nearby</span><span><Users/>Friends only</span></div>
