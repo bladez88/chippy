@@ -3,6 +3,7 @@ import { DateTime } from 'luxon'
 import { randomUUID } from 'node:crypto'
 import type { RoutingService } from '../integrations/routing/routing-service.js'
 import { routingService } from '../integrations/routing/index.js'
+import type { ChippyStore, MapFeatureCollection } from './store.js'
 
 type InternalTrip = TripDto
 type Friendship = { id: string; requesterId: string; addresseeId: string; status: 'PENDING' | 'ACCEPTED' | 'BLOCKED' }
@@ -13,7 +14,7 @@ const place = (label: string, address: string, latitude: number, longitude: numb
 const now = DateTime.now().setZone('America/Vancouver')
 const at = (days: number, hour: number, minute: number) => now.plus({ days }).startOf('day').set({ hour, minute }).toUTC().toISO()!
 
-export class CoreStore {
+export class CoreStore implements ChippyStore {
   constructor(private routing: RoutingService = routingService) {}
   users: UserDto[] = [
     { id: 'user-jimmy', email: 'jimmy@chippy.local', name: 'Jimmy', avatarUrl: null, timezone: 'America/Vancouver' },
@@ -33,6 +34,15 @@ export class CoreStore {
   }
 
   user(id: string) { return this.users.find((user) => user.id === id) }
+  findOrCreateGoogleUser(profile: { email: string; name: string; avatarUrl: string | null }) {
+    let user = this.users.find((item) => item.email === profile.email)
+    if (!user) {
+      user = { id: randomUUID(), ...profile, timezone: 'America/Vancouver' }
+      this.users.push(user)
+    }
+    return user
+  }
+  listTrips(userId: string) { return this.trips.filter((trip) => trip.userId === userId) }
   createTrips(userId: string, input: CreateTripInput) {
     const dates: string[] = []
     if (input.recurrence) {
@@ -71,6 +81,12 @@ export class CoreStore {
     const index = this.friendships.findIndex((f) => f.id === id && (f.requesterId === userId || f.addresseeId === userId))
     if (index < 0) throw new DomainError('NOT_FOUND', 'Friendship not found', 404)
     this.friendships.splice(index, 1)
+  }
+  listCarpools(userId: string) {
+    return this.carpools.filter((carpool) => {
+      const driver = this.trips.find((trip) => trip.id === carpool.driverTripId)
+      return driver?.userId === userId || carpool.participantTripIds.some((id) => this.trips.find((trip) => trip.id === id)?.userId === userId)
+    })
   }
   async calendar(userId: string, start: string, end: string): Promise<CalendarEvent[]> {
     const from = DateTime.fromISO(start).startOf('day').toMillis(); const to = DateTime.fromISO(end).endOf('day').toMillis()
@@ -240,6 +256,21 @@ export class CoreStore {
     const driverTrip = this.trips.find((item) => item.id === carpool.driverTripId)!
     const passengers = carpool.participantTripIds.map((id) => this.trips.find((item) => item.id === id)).filter((item): item is InternalTrip => Boolean(item))
     return { driverTrip, passengers, stops: [driverTrip.origin, ...passengers.map((item) => item.origin), driverTrip.destination], carpoolId: carpool.id }
+  }
+  async map(userId: string, routing: RoutingService): Promise<MapFeatureCollection> {
+    const own = this.trips.filter((trip) => trip.userId === userId && new Date(trip.departureAt).getTime() >= Date.now()).sort((a, b) => a.departureAt.localeCompare(b.departureAt))
+    const features = await Promise.all(own.map(async (trip) => {
+      const plan = this.routePlan(trip)
+      const routeMode = plan.driverTrip.transportationMode === 'TRANSIT' ? 'DRIVING' : plan.driverTrip.transportationMode
+      const route = await routing.getRoute(plan.stops, routeMode)
+      const stops = [
+        { kind: 'ORIGIN', label: plan.driverTrip.origin.label, address: plan.driverTrip.origin.address, latitude: plan.driverTrip.origin.latitude, longitude: plan.driverTrip.origin.longitude, friendName: this.user(plan.driverTrip.userId)?.name },
+        ...plan.passengers.map((passenger) => ({ kind: 'PICKUP', label: `${this.user(passenger.userId)?.name}'s pickup`, address: passenger.origin.address, latitude: passenger.origin.latitude, longitude: passenger.origin.longitude, friendName: this.user(passenger.userId)?.name })),
+        { kind: 'DESTINATION', label: plan.driverTrip.destination.label, address: plan.driverTrip.destination.address, latitude: plan.driverTrip.destination.latitude, longitude: plan.driverTrip.destination.longitude, friendName: null },
+      ]
+      return { type: 'Feature' as const, id: trip.id, properties: { title: `${plan.driverTrip.origin.label} → ${plan.driverTrip.destination.label}`, originLabel: plan.driverTrip.origin.label, destinationLabel: plan.driverTrip.destination.label, status: trip.carpoolStatus, departureAt: trip.departureAt, transportationMode: routeMode, passengerCount: plan.passengers.length, distanceMeters: Math.round(route.distanceMeters), durationSeconds: Math.round(route.durationSeconds), stops }, geometry: { type: 'LineString' as const, coordinates: route.geometry } }
+    }))
+    return { type: 'FeatureCollection', features }
   }
 }
 

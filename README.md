@@ -7,8 +7,8 @@ Chippy is a mobile-first private carpool planner for friends. It combines recurr
 - The web app uses Leaflet and OpenStreetMap raster tiles.
 - With `ROUTING_PROVIDER=ors`, location search, route geometry, travel time, matrices, and detour validation use OpenRouteService through the backend. Automated tests stay deterministic.
 - Authentication supports a local two-user demo and Google Identity Services when configured.
-- Application data currently lives in an in-memory store and resets whenever the API restarts.
-- Prisma, PostgreSQL/PostGIS, and Docker Compose are prepared, but the API repository is not yet wired to PostgreSQL.
+- The API supports a credential-free in-memory store and a persistent Prisma/PostgreSQL/PostGIS store selected with `DATA_STORE`.
+- Trip creation, friendships, matching, ride requests, carpools, notifications, and map/calendar reads use the selected store. Multi-record ride and carpool transitions are transactional in the Prisma adapter.
 
 ## Quick start
 
@@ -23,7 +23,7 @@ npm run dev
 
 Open `http://localhost:5173`. Use **Demo as Jimmy** to request Daniel's seeded ride. Log out and use **Demo as Daniel** to accept it.
 
-The demo requires no cloud credentials.
+The demo requires no cloud credentials when `DATA_STORE=memory`. Use `DATA_STORE=prisma` after configuring PostgreSQL.
 
 ### Two-person demo walkthrough
 
@@ -92,7 +92,24 @@ Do not use the public OpenStreetMap Nominatim endpoint for client-side autocompl
 
 ## Database setup
 
-The current demo is **not using a local database**. Its in-memory data is intentionally disposable.
+Use the memory adapter for a disposable demo:
+
+```dotenv
+# apps/api/.env
+DATA_STORE=memory
+```
+
+Use Prisma for persistent data:
+
+```dotenv
+# apps/api/.env
+DATA_STORE=prisma
+DATABASE_URL="postgresql://user:password@host:port/database?sslmode=require"
+```
+
+The URL must be PostgreSQL, not a TiDB/MySQL URL. Keep it only in the ignored `apps/api/.env` file.
+
+### Local PostgreSQL/PostGIS
 
 To prepare local PostGIS after installing Docker Desktop:
 
@@ -100,9 +117,23 @@ To prepare local PostGIS after installing Docker Desktop:
 docker compose up -d
 npm run db:generate
 npm run db:migrate
+npm run db:seed
+npm run db:test
 ```
 
-The default connection string in `apps/api/.env.example` matches Docker Compose. Tiger Cloud can replace it by setting `DATABASE_URL` in `apps/api/.env`. Database migration alone does not switch runtime storage yet; the Prisma repositories must be wired into the API first.
+The default connection string in `apps/api/.env.example` matches Docker Compose.
+
+### TigerData
+
+Create a PostgreSQL service, copy its PostgreSQL connection URI into `apps/api/.env`, set `DATA_STORE=prisma`, and run:
+
+```bash
+npm run db:deploy
+npm run db:seed
+npm run db:test
+```
+
+The initial migration enables PostGIS and creates GiST indexes for spatial columns. `db:deploy` is used for managed services because `prisma migrate dev` needs permission to create a shadow database, which TigerData does not normally provide.
 
 ## Commands
 
@@ -112,6 +143,9 @@ The default connection string in `apps/api/.env.example` matches Docker Compose.
 - `npm test` — unit and API tests
 - `docker compose up -d` — local PostGIS
 - `npm run db:generate` / `npm run db:migrate` — Prisma client and migrations
+- `npm run db:deploy` — apply checked-in migrations without a shadow database
+- `npm run db:seed` — upsert the fictional Jimmy/Daniel demo records
+- `npm run db:test` — verify PostgreSQL, PostGIS, spatial data, and persistent API CRUD
 
 ## Verification
 

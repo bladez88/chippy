@@ -11,6 +11,9 @@ const schema = z.object({
   OPENROUTESERVICE_API_KEY: z.string().optional(),
   ENABLE_DEV_AUTH: z.string().default('true').transform((value) => value === 'true'),
   ROUTING_PROVIDER: z.enum(['mock', 'ors']).default('mock'),
+  DATA_STORE: z.enum(['memory', 'prisma']).default('memory'),
+  DATABASE_URL: z.string().optional(),
 })
 export const env = schema.parse(process.env)
 if (env.NODE_ENV === 'production' && env.ENABLE_DEV_AUTH) throw new Error('Development authentication cannot be enabled in production')
+if (env.DATA_STORE === 'prisma' && !env.DATABASE_URL) throw new Error('DATABASE_URL is required when DATA_STORE=prisma')

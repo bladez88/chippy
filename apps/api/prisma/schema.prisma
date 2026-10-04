@@ -68,6 +68,8 @@ model User {
   notifications Notification[]
   requestedFriendships Friendship[] @relation("Requester")
   receivedFriendships Friendship[] @relation("Addressee")
+  requestedRides RideRequest[] @relation("RideRequester")
+  carpoolParticipants CarpoolParticipant[]
 }
 
 model Friendship {
@@ -153,12 +155,13 @@ model RideRequest {
   updatedAt DateTime @updatedAt
   driverTrip Trip @relation("DriverTrip", fields: [driverTripId], references: [id])
   passengerTrip Trip @relation("PassengerTrip", fields: [passengerTripId], references: [id])
+  requestedBy User @relation("RideRequester", fields: [requestedByUserId], references: [id])
   @@index([driverTripId, status])
 }
 
 model Carpool {
   id String @id @default(cuid())
-  driverTripId String
+  driverTripId String @unique
   status String @default("CONFIRMED")
   pickupLabel String?
   pickupAddress String?
@@ -178,6 +181,7 @@ model CarpoolParticipant {
   role ParticipantRole
   carpool Carpool @relation(fields: [carpoolId], references: [id], onDelete: Cascade)
   trip Trip @relation(fields: [tripId], references: [id])
+  user User @relation(fields: [userId], references: [id])
   @@id([carpoolId, tripId])
 }
 

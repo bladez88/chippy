@@ -36,9 +36,9 @@ This is an npm-workspaces monorepo. Use npm; do not introduce a second package m
 
 ## Current Runtime Truth
 
-- The runnable development API uses the in-memory `CoreStore`.
-- Demo data resets when the API process restarts.
-- Prisma and the PostGIS schema exist, but the API is not yet backed by Prisma repositories.
+- The API supports both the in-memory `CoreStore` and persistent `PrismaStore`; verify `DATA_STORE` before describing runtime behavior.
+- Demo data resets on API restart only when `DATA_STORE=memory`.
+- `DATA_STORE=prisma` persists API workflows in PostgreSQL/PostGIS, with transactional ride/carpool transitions.
 - Map rendering uses Leaflet and OpenStreetMap tiles.
 - Routes and detour estimates are currently deterministic demo calculations, not live road routes.
 - Google Identity Services can be enabled with environment configuration.

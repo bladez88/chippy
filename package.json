@@ -10,7 +10,9 @@
     "test": "npm run test --workspaces --if-present",
     "db:generate": "npm run db:generate -w @chippy/api",
     "db:migrate": "npm run db:migrate -w @chippy/api",
-    "db:seed": "npm run db:seed -w @chippy/api"
+    "db:deploy": "npm run db:deploy -w @chippy/api",
+    "db:seed": "npm run db:seed -w @chippy/api",
+    "db:test": "npm run db:test -w @chippy/api"
   },
   "devDependencies": {
     "concurrently": "^9.2.1",

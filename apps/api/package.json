@@ -11,7 +11,9 @@
     "test": "NODE_ENV=test vitest run",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:deploy": "prisma migrate deploy",
+    "db:seed": "tsx prisma/seed.ts",
+    "db:test": "tsx prisma/smoke.ts && ROUTING_PROVIDER=mock DATA_STORE=prisma tsx prisma/api-smoke.ts"
   },
   "dependencies": {
     "@chippy/shared": "*",
