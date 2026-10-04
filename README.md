@@ -135,6 +135,19 @@ npm run db:test
 
 The initial migration enables PostGIS and creates GiST indexes for spatial columns. `db:deploy` is used for managed services because `prisma migrate dev` needs permission to create a shadow database, which TigerData does not normally provide.
 
+## Frontend deployment on Vercel
+
+Import the repository into Vercel and leave the project Root Directory at the repository root. The checked-in `vercel.json` installs the npm workspace, builds `packages/shared` and `apps/web`, publishes `apps/web/dist`, and rewrites browser routes such as `/calendar` to the SPA entry point.
+
+Configure these browser-visible build variables in the Vercel project:
+
+```dotenv
+VITE_API_URL=https://api.example.tech/api
+VITE_GOOGLE_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
+```
+
+Replace `example.tech` with the deployed domain. Do not add `DATABASE_URL`, `JWT_SECRET`, or provider secrets to the frontend project. After changing a `VITE_` variable, redeploy because Vite embeds it during the build.
+
 ## Commands
 
 - `npm run dev` — web and API development servers
