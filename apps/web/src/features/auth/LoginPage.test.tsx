@@ -18,6 +18,11 @@ afterEach(() => {
 })
 
 describe('LoginPage', () => {
+  it('uses the Chippy logo in the brand header', () => {
+    const { container } = render(<LoginPage />)
+    expect(container.querySelector<HTMLImageElement>('.brand-mark')?.getAttribute('src')).toBe('/chippy-icon-192.png')
+  })
+
   it('signs in with email and password', async () => {
     const { container } = render(<LoginPage />)
     fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'alex@example.com' } })

@@ -46,7 +46,7 @@ export function LoginPage() {
   }
 
   return <main className="login-page">
-    <div className="brand"><span className="brand-mark">c</span><span>chippy</span></div>
+    <div className="brand"><img className="brand-mark" src="/chippy-icon-192.png" alt=""/><span>chippy</span></div>
     <section className="login-card">
       <div className="eyebrow">Carpools, minus the group chat chaos</div>
       <h1>Going the same way?</h1>

@@ -8,7 +8,7 @@ import { AppShell } from '../components/AppShell'
 
 export function App() {
   const {user,loading}=useAuth(); const {needRefresh:[needRefresh],updateServiceWorker}=useRegisterSW()
-  if(loading)return <div className="app-loading"><span className="brand-mark">c</span><p>Getting your route ready…</p></div>
+  if(loading)return <div className="app-loading"><img className="brand-mark" src="/chippy-icon-192.png" alt="Chippy"/><p>Getting your route ready…</p></div>
   if(!user)return <LoginPage/>
   return <BrowserRouter><Routes><Route element={<AppShell/>}><Route path="/calendar" element={<CalendarPage/>}/><Route path="/map" element={<MapPage/>}/><Route path="*" element={<Navigate to="/calendar" replace/>}/></Route></Routes>{needRefresh&&<div className="update-toast"><span>A fresh Chippy is ready.</span><button onClick={()=>updateServiceWorker(true)}>Update</button></div>}</BrowserRouter>
 }
