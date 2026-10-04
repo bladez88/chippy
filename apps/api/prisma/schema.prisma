@@ -1,0 +1,195 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [postgis]
+}
+
+enum TransportationMode {
+  DRIVING
+  TRANSIT
+  WALKING
+  CYCLING
+}
+
+enum CarpoolStatus {
+  NONE
+  LOOKING_FOR_RIDE
+  OFFERING_RIDE
+  REQUEST_PENDING
+  MATCHED
+}
+
+enum FriendshipStatus {
+  PENDING
+  ACCEPTED
+  BLOCKED
+}
+
+enum RideRequestType {
+  RIDE_REQUEST
+  RIDE_OFFER
+}
+
+enum RideRequestStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  CANCELLED
+}
+
+enum ParticipantRole {
+  DRIVER
+  PASSENGER
+}
+
+enum NotificationType {
+  RIDE_REQUEST
+  RIDE_OFFER
+  RIDE_ACCEPTED
+  RIDE_DECLINED
+  CARPOOL_CANCELLED
+}
+
+model User {
+  id String @id @default(cuid())
+  email String @unique
+  name String
+  avatarUrl String?
+  timezone String @default("America/Vancouver")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  schedules Schedule[]
+  trips Trip[]
+  notifications Notification[]
+  requestedFriendships Friendship[] @relation("Requester")
+  receivedFriendships Friendship[] @relation("Addressee")
+}
+
+model Friendship {
+  id String @id @default(cuid())
+  requesterId String
+  addresseeId String
+  status FriendshipStatus @default(PENDING)
+  createdAt DateTime @default(now())
+  requester User @relation("Requester", fields: [requesterId], references: [id], onDelete: Cascade)
+  addressee User @relation("Addressee", fields: [addresseeId], references: [id], onDelete: Cascade)
+  @@unique([requesterId, addresseeId])
+}
+
+model Schedule {
+  id String @id @default(cuid())
+  userId String
+  originLabel String
+  originAddress String
+  originLat Float
+  originLng Float
+  originGeog Unsupported("geography(Point,4326)")?
+  destinationLabel String
+  destinationAddress String
+  destinationLat Float
+  destinationLng Float
+  destinationGeog Unsupported("geography(Point,4326)")?
+  departureTime String
+  timezone String
+  startDate DateTime @db.Date
+  endDate DateTime @db.Date
+  daysOfWeek Int[]
+  transportationMode TransportationMode
+  carpoolStatus CarpoolStatus @default(NONE)
+  availableSeats Int?
+  active Boolean @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  trips Trip[]
+}
+
+model Trip {
+  id String @id @default(cuid())
+  scheduleId String?
+  userId String
+  originLabel String
+  originAddress String
+  originLat Float
+  originLng Float
+  originGeog Unsupported("geography(Point,4326)")?
+  destinationLabel String
+  destinationAddress String
+  destinationLat Float
+  destinationLng Float
+  destinationGeog Unsupported("geography(Point,4326)")?
+  departureAt DateTime
+  timezone String
+  estimatedArrivalAt DateTime?
+  transportationMode TransportationMode
+  carpoolStatus CarpoolStatus @default(NONE)
+  availableSeats Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  schedule Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  driverRequests RideRequest[] @relation("DriverTrip")
+  passengerRequests RideRequest[] @relation("PassengerTrip")
+  drivenCarpools Carpool[]
+  participants CarpoolParticipant[]
+  @@unique([scheduleId, departureAt])
+  @@index([userId, departureAt])
+}
+
+model RideRequest {
+  id String @id @default(cuid())
+  driverTripId String
+  passengerTripId String
+  requestedByUserId String
+  requestType RideRequestType
+  status RideRequestStatus @default(PENDING)
+  fuelContributionAmount Decimal? @db.Decimal(8,2)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  driverTrip Trip @relation("DriverTrip", fields: [driverTripId], references: [id])
+  passengerTrip Trip @relation("PassengerTrip", fields: [passengerTripId], references: [id])
+  @@index([driverTripId, status])
+}
+
+model Carpool {
+  id String @id @default(cuid())
+  driverTripId String
+  status String @default("CONFIRMED")
+  pickupLabel String?
+  pickupAddress String?
+  pickupLat Float?
+  pickupLng Float?
+  estimatedDriverDetourMinutes Int?
+  fuelContributionAmount Decimal? @db.Decimal(8,2)
+  createdAt DateTime @default(now())
+  driverTrip Trip @relation(fields: [driverTripId], references: [id])
+  participants CarpoolParticipant[]
+}
+
+model CarpoolParticipant {
+  carpoolId String
+  tripId String
+  userId String
+  role ParticipantRole
+  carpool Carpool @relation(fields: [carpoolId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [tripId], references: [id])
+  @@id([carpoolId, tripId])
+}
+
+model Notification {
+  id String @id @default(cuid())
+  userId String
+  type NotificationType
+  title String
+  body String
+  referenceId String?
+  readAt DateTime?
+  createdAt DateTime @default(now())
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  @@index([userId, createdAt])
+}
