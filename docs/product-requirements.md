@@ -8,6 +8,8 @@ A potential carpool may qualify through a close departure window or a close dest
 
 Changing transportation mode recalculates the displayed route duration and route geometry through the selected backend routing adapter. Route durations are estimates and use a `~` label. Driving, walking, and cycling use provider-specific profiles; transit remains an approximation until a live timetable-capable transit provider is integrated.
 
+After a ride request is accepted, both participants' calendar cards present the trip as **Carpooling** while retaining each participant's original transportation mode in the underlying trip snapshot. Confirmed calendar cards omit the redundant passenger-count badge; passenger totals remain available in trip details.
+
 Users can edit the date, departure time, transportation mode, carpool intent, and available seats for one dated trip occurrence. If a confirmed driver changes coordination-relevant details or stops driving, confirmed passengers are removed, their original trips are restored, and they receive in-app notifications.
 
 MVP excludes real payments, live GPS/navigation, push/SMS/email, public discovery, friend groups, machine learning, and complex route optimization.
