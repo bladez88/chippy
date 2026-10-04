@@ -1,6 +1,6 @@
 import type { CalendarEvent } from '@chippy/shared'
 
-export const FRIEND_COLORS = ['#6f67d9', '#d56a8a', '#2d8f83', '#d17a35', '#3978b8', '#8b6a45'] as const
+export const FRIEND_COLORS = ['#6338c7', '#c72f68', '#00796b', '#b65300', '#1769aa', '#a33b20', '#657000', '#8b3fa0'] as const
 
 export function colorFriendEvents(events: CalendarEvent[], selectedFriendIds: string[]) {
   const colors = new Map(selectedFriendIds.map((id, index) => [id, FRIEND_COLORS[index % FRIEND_COLORS.length]]))
