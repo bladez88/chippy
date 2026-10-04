@@ -10,6 +10,7 @@ import { EventCard } from './EventCard'
 import { isoDate, moveDate, rangeFor, sameDay, type CalendarView } from './calendar-utils'
 import { TripSheet } from '../trips/TripSheet'
 import { MatchSheet } from '../carpools/MatchSheet'
+import { TripDetailSheet } from '../trips/TripDetailSheet'
 
 const validView = (value: string | null): value is CalendarView => ['day','week','month'].includes(value ?? '')
 export function CalendarPage() {
@@ -33,7 +34,7 @@ export function CalendarPage() {
     {!query.isLoading && !query.isError && view === 'week' && <Week days={days} events={events} onSelect={setSelected}/>} 
     {!query.isLoading && !query.isError && view === 'month' && <Month days={days} focus={date} events={events} onSelectDay={(day) => update('day', day)}/>} 
     <button className="fab" onClick={() => setTripOpen(true)}><Plus/>Add trip</button>
-    {tripOpen && <TripSheet onClose={() => setTripOpen(false)}/>} {selected?.kind === 'POTENTIAL_MATCH' && <MatchSheet event={selected} onClose={() => setSelected(null)}/>} 
+    {tripOpen && <TripSheet onClose={() => setTripOpen(false)}/>} {selected?.kind === 'POTENTIAL_MATCH' && <MatchSheet event={selected} onClose={() => setSelected(null)}/>} {selected && selected.kind !== 'POTENTIAL_MATCH' && <TripDetailSheet event={selected} onClose={() => setSelected(null)}/>} 
   </main>
 }
 function Agenda({ date, events, onSelect }: { date: Date; events: CalendarEvent[]; onSelect: (event: CalendarEvent) => void }) { const day = events.filter((event) => sameDay(event.startsAt, date)); return <section className="agenda"><div className="day-heading"><span>{format(date, 'EEEE')}</span><strong>{format(date, 'd')}</strong></div><div className="event-list">{day.length ? day.map((event) => <EventCard key={event.id} event={event} onSelect={() => onSelect(event)}/>) : <div className="empty-day"><span>Open road</span><p>No trips planned for this day.</p></div>}</div></section> }

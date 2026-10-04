@@ -5,7 +5,7 @@ Chippy is a mobile-first private carpool planner for friends. It combines recurr
 ## Current implementation
 
 - The web app uses Leaflet and OpenStreetMap raster tiles.
-- Demo routes and detour estimates are deterministic; they are not live road routes yet.
+- With `ROUTING_PROVIDER=ors`, location search, route geometry, travel time, matrices, and detour validation use OpenRouteService through the backend. Automated tests stay deterministic.
 - Authentication supports a local two-user demo and Google Identity Services when configured.
 - Application data currently lives in an in-memory store and resets whenever the API restarts.
 - Prisma, PostgreSQL/PostGIS, and Docker Compose are prepared, but the API repository is not yet wired to PostgreSQL.
@@ -24,6 +24,16 @@ npm run dev
 Open `http://localhost:5173`. Use **Demo as Jimmy** to request Daniel's seeded ride. Log out and use **Demo as Daniel** to accept it.
 
 The demo requires no cloud credentials.
+
+### Two-person demo walkthrough
+
+1. Sign in as **Jimmy**. On the next day's calendar, open the orange Daniel → SFU match and compare Jimmy's original arrival with the carpool arrival. Request the ride.
+2. Open **Menu → Log out**, then sign in as **Daniel**. Open **Menu → Notifications** and accept Jimmy's request.
+3. Open Daniel's calendar event to see the ordered driver start, Jimmy pickup, and destination ETAs. Each address can be copied, and Jimmy can be removed from the route.
+4. Switch back to **Jimmy** and open Home → SFU to see the pickup driver/time, final arrival, and original-versus-carpool arrival comparison.
+5. Jimmy can leave the carpool while keeping his original trip, or remove the trip entirely. Daniel can remove Jimmy or cancel the drive; either action restores Jimmy's original trip and recalculates Daniel's route.
+
+The dates are seeded relative to the day the API starts. Restarting the API resets the complete demo.
 
 ## Environment files and API keys
 
@@ -76,7 +86,7 @@ VITE_GOOGLE_MAPS_API_KEY=your-restricted-browser-key
 GOOGLE_MAPS_SERVER_API_KEY=your-restricted-server-key
 ```
 
-Enable only the APIs each key needs. The current code declares these variables for setup clarity, but the Google map/search/routes migration and the live ORS client still need to be implemented before either routing key changes application behavior.
+Enable only the APIs each key needs. The Google variables are reserved for a possible later migration; the ORS integration is active when `ROUTING_PROVIDER=ors`.
 
 Do not use the public OpenStreetMap Nominatim endpoint for client-side autocomplete, and do not treat the community OSM raster tile server as a production service with an SLA. Use a hosted provider or self-host before meaningful public traffic.
 

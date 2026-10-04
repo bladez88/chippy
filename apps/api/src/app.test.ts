@@ -9,12 +9,55 @@ describe('Chippy API vertical slice', () => {
   it('rejects unauthenticated calendar reads', async () => expect((await request(app).get('/api/calendar?start=2026-01-01&end=2026-01-31')).status).toBe(401))
   it('returns the authenticated profile', async () => expect((await request(app).get('/api/auth/me').set('Cookie', cookie)).body.user.email).toBe('jimmy@chippy.local'))
   it('returns calendar events', async () => { const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000); const response = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}`).set('Cookie', cookie); expect(response.status).toBe(200); expect(response.body.events.length).toBeGreaterThan(0) })
-  it('creates a ride request from a match', async () => { const response = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 }); expect(response.status).toBe(201); expect(response.body.request.status).toBe('PENDING') })
+  it('creates a ride request and gives the driver a route comparison', async () => {
+    const response = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })
+    expect(response.status).toBe(201); expect(response.body.request.status).toBe('PENDING')
+    const driverLogin = await request(app).post('/api/auth/dev-login').send({ userId: 'user-daniel' }); const driverCookie = driverLogin.headers['set-cookie']?.[0] ?? ''
+    const requests = await request(app).get('/api/ride-requests').set('Cookie', driverCookie)
+    const impact = requests.body.requests[0].routeImpact
+    expect(impact.originalDistanceMeters).toBeGreaterThan(0)
+    expect(impact.proposedDistanceMeters).toBeGreaterThanOrEqual(impact.originalDistanceMeters)
+    expect(impact.proposedArrivalAt).toBeTruthy()
+    expect(impact.pickupAt).toBeTruthy()
+    expect(impact.routeStops).toEqual({ from: 'Daniel’s neighbourhood', pickup: 'Burnaby area', to: 'SFU' })
+    const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000)
+    const calendar = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}`).set('Cookie', driverCookie)
+    expect(calendar.body.events.find((event: { sourceId: string }) => event.sourceId === 'trip-daniel').pendingRideRequestCount).toBe(1)
+  })
+  it('removes an uncommitted trip from the calendar', async () => {
+    const created = await request(app).post('/api/trips').set('Cookie', cookie).send({ origin: { label: 'Home', address: 'Burnaby, BC', latitude: 49.24, longitude: -122.98 }, destination: { label: 'Gym', address: 'Burnaby, BC', latitude: 49.25, longitude: -122.96 }, departureAt: new Date(Date.now() + 86400_000).toISOString(), timezone: 'America/Vancouver', transportationMode: 'WALKING', carpoolStatus: 'NONE' })
+    const tripId = created.body.trips[0].id
+    expect((await request(app).delete(`/api/trips/${tripId}`).set('Cookie', cookie)).status).toBe(204)
+    expect(store.trips.some((trip) => trip.id === tripId)).toBe(false)
+  })
   it('lets the driver accept and returns a confirmed carpool event', async () => {
     const created = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })
     const driverLogin = await request(app).post('/api/auth/dev-login').send({ userId: 'user-daniel' }); const driverCookie = driverLogin.headers['set-cookie']?.[0] ?? ''
     expect((await request(app).patch(`/api/ride-requests/${created.body.request.id}/accept`).set('Cookie', driverCookie)).body.request.status).toBe('ACCEPTED')
     const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000); const calendar = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}`).set('Cookie', cookie)
     expect(calendar.body.events.some((event: { kind: string }) => event.kind === 'CONFIRMED_CARPOOL')).toBe(true)
+    const plan = await request(app).get('/api/trips/trip-jimmy/route-plan').set('Cookie', cookie)
+    expect(plan.body.plan.role).toBe('PASSENGER')
+    expect(plan.body.plan.pickupAt).toBeTruthy()
+    expect(plan.body.plan.stops.map((stop: { kind: string }) => stop.kind)).toEqual(['ORIGIN', 'PICKUP', 'DESTINATION'])
+  })
+  it('lets a driver remove a passenger and restores the passenger trip', async () => {
+    const created = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })
+    const driverLogin = await request(app).post('/api/auth/dev-login').send({ userId: 'user-daniel' }); const driverCookie = driverLogin.headers['set-cookie']?.[0] ?? ''
+    await request(app).patch(`/api/ride-requests/${created.body.request.id}/accept`).set('Cookie', driverCookie)
+    const carpoolId = store.carpools[0]!.id
+    expect((await request(app).delete(`/api/carpools/${carpoolId}/passengers/trip-jimmy`).set('Cookie', driverCookie)).status).toBe(204)
+    expect(store.trips.find((trip) => trip.id === 'trip-jimmy')?.carpoolStatus).toBe('LOOKING_FOR_RIDE')
+    expect(store.trips.find((trip) => trip.id === 'trip-daniel')?.carpoolStatus).toBe('OFFERING_RIDE')
+    expect(store.carpools).toHaveLength(0)
+  })
+  it('removes a confirmed passenger trip and recalculates the driver route', async () => {
+    const created = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })
+    const driverLogin = await request(app).post('/api/auth/dev-login').send({ userId: 'user-daniel' }); const driverCookie = driverLogin.headers['set-cookie']?.[0] ?? ''
+    await request(app).patch(`/api/ride-requests/${created.body.request.id}/accept`).set('Cookie', driverCookie)
+    expect((await request(app).delete('/api/trips/trip-jimmy').set('Cookie', cookie)).status).toBe(204)
+    expect(store.trips.some((trip) => trip.id === 'trip-jimmy')).toBe(false)
+    expect(store.trips.find((trip) => trip.id === 'trip-daniel')?.carpoolStatus).toBe('OFFERING_RIDE')
+    expect(store.carpools).toHaveLength(0)
   })
 })

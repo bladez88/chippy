@@ -60,9 +60,19 @@ export const CalendarEventSchema = z.object({
   id: z.string(), sourceId: z.string(), kind: CalendarEventKindSchema, title: z.string(), subtitle: z.string(),
   startsAt: z.string(), endsAt: z.string().nullable(), transportationMode: TransportationModeSchema,
   carpoolStatus: CarpoolStatusSchema, friend: UserSchema.optional(), detourMinutes: z.number().optional(),
-  distanceMeters: z.number().optional(), color: z.string(),
+  distanceMeters: z.number().optional(), originLabel: z.string(), destinationLabel: z.string(),
+  passengerCount: z.number().int().nonnegative(), estimatedDurationMinutes: z.number().int().positive().optional(),
+  pendingRideRequestCount: z.number().int().nonnegative(), originalArrivalAt: z.string().optional(), carpoolArrivalAt: z.string().optional(), pickupAt: z.string().optional(), color: z.string(),
 })
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>
+
+export const TripRoutePlanSchema = z.object({
+  tripId: z.string(), carpoolId: z.string().nullable(), role: z.enum(['SOLO', 'DRIVER', 'PASSENGER']),
+  driver: UserSchema, departureAt: z.string(), pickupAt: z.string().nullable(), originalArrivalAt: z.string(),
+  carpoolArrivalAt: z.string(), distanceMeters: z.number(), durationMinutes: z.number().int().positive(),
+  stops: z.array(z.object({ tripId: z.string().nullable(), kind: z.enum(['ORIGIN', 'PICKUP', 'DESTINATION']), label: z.string(), address: z.string(), estimatedAt: z.string(), friend: UserSchema.nullable() })),
+})
+export type TripRoutePlan = z.infer<typeof TripRoutePlanSchema>
 
 export const FriendSchema = UserSchema.extend({ friendshipId: z.string(), status: z.enum(friendshipStatuses), direction: z.enum(['INCOMING', 'OUTGOING']) })
 export type FriendDto = z.infer<typeof FriendSchema>
@@ -71,6 +81,12 @@ export const RideRequestSchema = z.object({
   id: z.string(), driverTripId: z.string(), passengerTripId: z.string(), requestedByUserId: z.string(),
   requestType: z.enum(['RIDE_REQUEST', 'RIDE_OFFER']), status: z.enum(rideRequestStatuses),
   fuelContributionAmount: z.number().nonnegative().nullable(), createdAt: z.string(), friend: UserSchema,
+  routeImpact: z.object({
+    originalArrivalAt: z.string(), proposedArrivalAt: z.string(), pickupAt: z.string(),
+    originalDistanceMeters: z.number(), proposedDistanceMeters: z.number(), addedDistanceMeters: z.number(),
+    originalDurationMinutes: z.number().int().nonnegative(), proposedDurationMinutes: z.number().int().nonnegative(), addedDurationMinutes: z.number().int().nonnegative(),
+    routeStops: z.object({ from: z.string(), pickup: z.string(), to: z.string() }),
+  }).optional(),
 })
 export type RideRequestDto = z.infer<typeof RideRequestSchema>
 
