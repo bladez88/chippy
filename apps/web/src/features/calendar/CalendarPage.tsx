@@ -7,7 +7,7 @@ import { ChevronLeft, ChevronRight, Plus, WifiOff } from 'lucide-react'
 import { api, queryKeys } from '../../lib/api'
 import { useAuth } from '../auth/AuthProvider'
 import { EventCard } from './EventCard'
-import { isoDate, moveDate, rangeFor, sameDay, type CalendarView } from './calendar-utils'
+import { calendarHeading, isoDate, moveDate, rangeFor, sameDay, type CalendarView } from './calendar-utils'
 import { TripSheet } from '../trips/TripSheet'
 import { MatchSheet } from '../carpools/MatchSheet'
 import { TripDetailSheet } from '../trips/TripDetailSheet'
@@ -24,7 +24,7 @@ export function CalendarPage() {
   const days = eachDayOfInterval({ start: range.start, end: range.end }); const events = query.data?.events ?? []
   return <main className="page calendar-page">
     {!navigator.onLine && <div className="offline"><WifiOff/>You’re offline. Changes are paused.</div>}
-    <header className="page-header"><div><p className="eyebrow">Your shared schedule</p><h1>{format(date, view === 'month' ? 'MMMM yyyy' : 'MMMM d')}</h1></div><button className="avatar" aria-label="Profile">{user?.name.at(0)}</button></header>
+    <header className="page-header"><div><p className="eyebrow">Your shared schedule</p><h1>{calendarHeading(view, date)}</h1></div><button className="avatar" aria-label="Profile">{user?.name.at(0)}</button></header>
     <div className="calendar-toolbar">
       <div className="segmented">{(['day','week','month'] as const).map((item) => <button className={view === item ? 'active' : ''} key={item} onClick={() => update(item, date)}>{item}</button>)}</div>
       <div className="date-controls"><button onClick={() => update(view, moveDate(view, date, -1))} aria-label="Previous"><ChevronLeft/></button><button className="today" onClick={() => update(view, new Date())}>Today</button><button onClick={() => update(view, moveDate(view, date, 1))} aria-label="Next"><ChevronRight/></button></div>
