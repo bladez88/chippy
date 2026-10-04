@@ -86,7 +86,7 @@ export const CalendarEventSchema = z.object({
   carpoolStatus: CarpoolStatusSchema, friend: UserSchema.optional(), detourMinutes: z.number().optional(),
   distanceMeters: z.number().optional(), originLabel: z.string(), destinationLabel: z.string(),
   passengerCount: z.number().int().nonnegative(), estimatedDurationMinutes: z.number().int().positive().optional(),
-  pendingRideRequestCount: z.number().int().nonnegative(), originalArrivalAt: z.string().optional(), carpoolArrivalAt: z.string().optional(), pickupAt: z.string().optional(), color: z.string(),
+  pendingRideRequestCount: z.number().int().nonnegative(), originalArrivalAt: z.string().optional(), carpoolArrivalAt: z.string().optional(), arrivalDifferenceMinutes: z.number().int().optional(), pickupAt: z.string().optional(), color: z.string(),
 })
 export type CalendarEvent = z.infer<typeof CalendarEventSchema>
 
@@ -121,4 +121,6 @@ export const NotificationSchema = z.object({
 export type NotificationDto = z.infer<typeof NotificationSchema>
 
 export const ApiErrorSchema = z.object({ error: z.object({ code: z.string(), message: z.string(), fieldErrors: z.record(z.string(), z.array(z.string())).optional(), requestId: z.string() }) })
-export const MATCHING_DEFAULTS = { maxDepartureDifferenceMinutes: 30, maxDestinationDistanceMeters: 2_000, maxDriverDetourMinutes: 10 } as const
+export const MATCHING_DEFAULTS = { maxDepartureDifferenceMinutes: 30, maxArrivalDifferenceMinutes: 30, maxDestinationDistanceMeters: 2_000, maxDriverDetourMinutes: 10 } as const
+export const isTimingCompatible = (departureDifferenceMinutes: number, arrivalDifferenceMinutes: number) =>
+  departureDifferenceMinutes <= MATCHING_DEFAULTS.maxDepartureDifferenceMinutes || Math.abs(arrivalDifferenceMinutes) <= MATCHING_DEFAULTS.maxArrivalDifferenceMinutes

@@ -23,6 +23,7 @@ export type MatchResult = {
   pickupAt: string
   carpoolArrivalAt: string
   originalArrivalAt: string
+  arrivalDifferenceMinutes: number
 }
 
 export type RoutePlan = {

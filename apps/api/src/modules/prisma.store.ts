@@ -13,6 +13,7 @@ import type {
   UserDto,
   EmailPasswordRegistrationInput,
 } from '@chippy/shared'
+import { isTimingCompatible, MATCHING_DEFAULTS } from '@chippy/shared'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { DateTime } from 'luxon'
 import type { RoutingService } from '../integrations/routing/routing-service.js'
@@ -263,7 +264,7 @@ export class PrismaStore implements ChippyStore {
     }))
     const matchGroups = await Promise.all(ownTrips.map(async (trip) => trip.carpoolStatus !== 'LOOKING_FOR_RIDE' ? [] : (await this.matches(userId, trip.id)).map((match) => {
       const friendTrip = match.driver.userId === userId ? match.passenger : match.driver
-      return { ...this.event(friendTrip, 'POTENTIAL_MATCH'), id: `match-${trip.id}-${friendTrip.id}`, sourceId: `${match.driver.id}:${match.passenger.id}`, title: `${match.friend.name} → ${friendTrip.destination.label}`, subtitle: `Potential carpool · ${match.detourMinutes} min detour`, friend: match.friend, detourMinutes: match.detourMinutes, distanceMeters: match.distanceMeters, originalArrivalAt: match.originalArrivalAt, carpoolArrivalAt: match.carpoolArrivalAt, pickupAt: match.pickupAt, color: '#f28b5b' } satisfies CalendarEvent
+      return { ...this.event(friendTrip, 'POTENTIAL_MATCH'), id: `match-${trip.id}-${friendTrip.id}`, sourceId: `${match.driver.id}:${match.passenger.id}`, title: `${match.friend.name} → ${friendTrip.destination.label}`, subtitle: `Potential carpool · ${match.detourMinutes} min detour`, friend: match.friend, detourMinutes: match.detourMinutes, distanceMeters: match.distanceMeters, originalArrivalAt: match.originalArrivalAt, carpoolArrivalAt: match.carpoolArrivalAt, arrivalDifferenceMinutes: match.arrivalDifferenceMinutes, pickupAt: match.pickupAt, color: '#f28b5b' } satisfies CalendarEvent
     })))
     const accepted = friendIds.length ? await this.prisma.friendship.findMany({ where: { status: 'ACCEPTED', OR: [
       { requesterId: userId, addresseeId: { in: friendIds } },
@@ -293,7 +294,7 @@ export class PrismaStore implements ChippyStore {
         ? { carpoolStatus: 'LOOKING_FOR_RIDE' as const }
         : { carpoolStatus: allowPendingPassenger ? { in: ['OFFERING_RIDE', 'MATCHED'] as CarpoolStatus[] } : 'OFFERING_RIDE' as const, transportationMode: 'DRIVING' as const }),
     } })
-    const staged: Array<{ driver: TripDto; passenger: TripDto; distanceMeters: number }> = []
+    const staged: Array<{ driver: TripDto; passenger: TripDto; distanceMeters: number; departureDifferenceMinutes: number }> = []
     for (const candidateRow of candidates) {
       const candidate = tripDto(candidateRow)
       const driver = trip.carpoolStatus === 'OFFERING_RIDE' ? trip : candidate
@@ -302,16 +303,15 @@ export class PrismaStore implements ChippyStore {
       const passengerEligible = passenger.carpoolStatus === 'LOOKING_FOR_RIDE' || (allowPendingPassenger && passenger.carpoolStatus === 'REQUEST_PENDING')
       if (!driverEligible || driver.transportationMode !== 'DRIVING' || !passengerEligible) continue
       const minutes = Math.abs(DateTime.fromISO(driver.departureAt).diff(DateTime.fromISO(passenger.departureAt), 'minutes').minutes)
-      if (minutes > 30) continue
       const rows = await this.prisma.$queryRaw<Array<{ distance: number | null }>>`
         SELECT ST_Distance(a."destinationGeog", b."destinationGeog") AS distance
         FROM "Trip" a, "Trip" b
         WHERE a.id = ${driver.id} AND b.id = ${passenger.id}
       `
       const distanceMeters = rows[0]?.distance ?? haversine(driver.destination, passenger.destination)
-      if (distanceMeters <= 2_000) staged.push({ driver, passenger, distanceMeters: Math.round(distanceMeters) })
+      if (distanceMeters <= MATCHING_DEFAULTS.maxDestinationDistanceMeters) staged.push({ driver, passenger, distanceMeters: Math.round(distanceMeters), departureDifferenceMinutes: minutes })
     }
-    const routed = await Promise.all(staged.map(async ({ driver, passenger, distanceMeters }) => {
+    const routed = await Promise.all(staged.map(async ({ driver, passenger, distanceMeters, departureDifferenceMinutes }) => {
       const [normal, carpool, passengerRoute, friend] = await Promise.all([
         this.routing.getRoute([driver.origin, driver.destination], 'DRIVING'),
         this.routing.getRoute([driver.origin, passenger.origin, driver.destination], 'DRIVING'),
@@ -320,9 +320,12 @@ export class PrismaStore implements ChippyStore {
       ])
       const detourMinutes = Math.max(0, Math.round((carpool.durationSeconds - normal.durationSeconds) / 60))
       const driverDeparture = DateTime.fromISO(driver.departureAt)
-      return { driver, passenger, friend: friend!, distanceMeters, detourMinutes, pickupAt: driverDeparture.plus({ seconds: carpool.legs[0]?.durationSeconds ?? 0 }).toUTC().toISO()!, carpoolArrivalAt: driverDeparture.plus({ seconds: carpool.durationSeconds }).toUTC().toISO()!, originalArrivalAt: DateTime.fromISO(passenger.departureAt).plus({ seconds: passengerRoute.durationSeconds }).toUTC().toISO()! }
+      const carpoolArrival = driverDeparture.plus({ seconds: carpool.durationSeconds })
+      const originalArrival = DateTime.fromISO(passenger.departureAt).plus({ seconds: passengerRoute.durationSeconds })
+      const arrivalDifferenceMinutes = Math.round(carpoolArrival.diff(originalArrival, 'minutes').minutes)
+      return { driver, passenger, friend: friend!, distanceMeters, departureDifferenceMinutes, detourMinutes, arrivalDifferenceMinutes, pickupAt: driverDeparture.plus({ seconds: carpool.legs[0]?.durationSeconds ?? 0 }).toUTC().toISO()!, carpoolArrivalAt: carpoolArrival.toUTC().toISO()!, originalArrivalAt: originalArrival.toUTC().toISO()! }
     }))
-    return routed.filter((match) => match.detourMinutes <= 10)
+    return routed.filter((match) => match.detourMinutes <= MATCHING_DEFAULTS.maxDriverDetourMinutes && isTimingCompatible(match.departureDifferenceMinutes, match.arrivalDifferenceMinutes))
   }
 
   async createRideRequest(userId: string, driverTripId: string, passengerTripId: string, fuelContributionAmount: number | null) {

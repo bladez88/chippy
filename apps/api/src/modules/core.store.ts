@@ -1,4 +1,5 @@
 import type { CalendarEvent, CarpoolStatus, CreateTripInput, EmailPasswordRegistrationInput, FriendDto, Location, NotificationDto, RideRequestDto, TransportationMode, TripDto, TripRoutePlan, UpdateTripInput, UserDto } from '@chippy/shared'
+import { isTimingCompatible, MATCHING_DEFAULTS } from '@chippy/shared'
 import { DateTime } from 'luxon'
 import { randomUUID } from 'node:crypto'
 import type { RoutingService } from '../integrations/routing/routing-service.js'
@@ -128,9 +129,9 @@ export class CoreStore implements ChippyStore {
     const from = DateTime.fromISO(start).startOf('day').toMillis(); const to = DateTime.fromISO(end).endOf('day').toMillis()
     const ownTrips = this.trips.filter((trip) => trip.userId === userId && within(trip.departureAt, from, to))
     const own = await Promise.all(ownTrips.map(async (trip) => { const plan = this.routePlan(trip); const route = await this.routing.getRoute(plan.stops, plan.driverTrip.transportationMode === 'TRANSIT' ? 'DRIVING' : plan.driverTrip.transportationMode); const pendingRideRequestCount = this.requests.filter((request) => request.driverTripId === trip.id && request.status === 'PENDING').length; return this.event(trip, trip.carpoolStatus === 'MATCHED' ? 'CONFIRMED_CARPOOL' : 'OWN_TRIP', Math.max(1, Math.round(route.durationSeconds / 60)), plan.passengers.length, pendingRideRequestCount) }))
-    const matchGroups = await Promise.all(ownTrips.map(async (trip) => trip.carpoolStatus !== 'LOOKING_FOR_RIDE' ? [] : (await this.matches(userId, trip.id)).map(({ driver, passenger, detourMinutes, distanceMeters, originalArrivalAt, carpoolArrivalAt, pickupAt }) => {
+    const matchGroups = await Promise.all(ownTrips.map(async (trip) => trip.carpoolStatus !== 'LOOKING_FOR_RIDE' ? [] : (await this.matches(userId, trip.id)).map(({ driver, passenger, detourMinutes, distanceMeters, originalArrivalAt, carpoolArrivalAt, arrivalDifferenceMinutes, pickupAt }) => {
       const friendTrip = driver.userId === userId ? passenger : driver
-      return { ...this.event(friendTrip, 'POTENTIAL_MATCH'), id: `match-${trip.id}-${friendTrip.id}`, sourceId: `${driver.id}:${passenger.id}`, title: `${this.user(friendTrip.userId)?.name} → ${friendTrip.destination.label}`, subtitle: `Potential carpool · ${detourMinutes} min detour`, friend: this.user(friendTrip.userId), detourMinutes, distanceMeters, originalArrivalAt, carpoolArrivalAt, pickupAt, color: '#f28b5b' } satisfies CalendarEvent
+      return { ...this.event(friendTrip, 'POTENTIAL_MATCH'), id: `match-${trip.id}-${friendTrip.id}`, sourceId: `${driver.id}:${passenger.id}`, title: `${this.user(friendTrip.userId)?.name} → ${friendTrip.destination.label}`, subtitle: `Potential carpool · ${detourMinutes} min detour`, friend: this.user(friendTrip.userId), detourMinutes, distanceMeters, originalArrivalAt, carpoolArrivalAt, arrivalDifferenceMinutes, pickupAt, color: '#f28b5b' } satisfies CalendarEvent
     })))
     const matches = matchGroups.flat()
     const acceptedIds = new Set(this.friends(userId).filter((friend) => friend.status === 'ACCEPTED' && friendIds.includes(friend.id)).map((friend) => friend.id))
@@ -153,15 +154,18 @@ export class CoreStore implements ChippyStore {
       if (driver.carpoolStatus !== 'OFFERING_RIDE' || driver.transportationMode !== 'DRIVING' || passenger.carpoolStatus !== 'LOOKING_FOR_RIDE') return []
       const timeDifference = Math.abs(DateTime.fromISO(driver.departureAt).diff(DateTime.fromISO(passenger.departureAt), 'minutes').minutes)
       const distanceMeters = haversine(driver.destination, passenger.destination)
-      return timeDifference <= 30 && distanceMeters <= 2000 ? [{ driver, passenger, distanceMeters: Math.round(distanceMeters) }] : []
+      return distanceMeters <= MATCHING_DEFAULTS.maxDestinationDistanceMeters ? [{ driver, passenger, distanceMeters: Math.round(distanceMeters), departureDifferenceMinutes: timeDifference }] : []
     })
-    const routed = await Promise.all(candidates.map(async ({ driver, passenger, distanceMeters }) => {
+    const routed = await Promise.all(candidates.map(async ({ driver, passenger, distanceMeters, departureDifferenceMinutes }) => {
       const [normal, carpool, passengerRoute] = await Promise.all([this.routing.getRoute([driver.origin, driver.destination], 'DRIVING'), this.routing.getRoute([driver.origin, passenger.origin, driver.destination], 'DRIVING'), this.routing.getRoute([passenger.origin, passenger.destination], passenger.transportationMode)])
       const detourMinutes = Math.max(0, Math.round((carpool.durationSeconds - normal.durationSeconds) / 60))
       const driverDeparture = DateTime.fromISO(driver.departureAt)
-      return { driver, passenger, distanceMeters, detourMinutes, pickupAt: driverDeparture.plus({ seconds: carpool.legs[0]?.durationSeconds ?? 0 }).toUTC().toISO()!, carpoolArrivalAt: driverDeparture.plus({ seconds: carpool.durationSeconds }).toUTC().toISO()!, originalArrivalAt: DateTime.fromISO(passenger.departureAt).plus({ seconds: passengerRoute.durationSeconds }).toUTC().toISO()! }
+      const carpoolArrival = driverDeparture.plus({ seconds: carpool.durationSeconds })
+      const originalArrival = DateTime.fromISO(passenger.departureAt).plus({ seconds: passengerRoute.durationSeconds })
+      const arrivalDifferenceMinutes = Math.round(carpoolArrival.diff(originalArrival, 'minutes').minutes)
+      return { driver, passenger, distanceMeters, departureDifferenceMinutes, detourMinutes, arrivalDifferenceMinutes, pickupAt: driverDeparture.plus({ seconds: carpool.legs[0]?.durationSeconds ?? 0 }).toUTC().toISO()!, carpoolArrivalAt: carpoolArrival.toUTC().toISO()!, originalArrivalAt: originalArrival.toUTC().toISO()! }
     }))
-    return routed.filter((match) => match.detourMinutes <= 10)
+    return routed.filter((match) => match.detourMinutes <= MATCHING_DEFAULTS.maxDriverDetourMinutes && isTimingCompatible(match.departureDifferenceMinutes, match.arrivalDifferenceMinutes))
   }
   async createRideRequest(userId: string, driverTripId: string, passengerTripId: string, fuelContributionAmount: number | null) {
     const passenger = this.trips.find((trip) => trip.id === passengerTripId)

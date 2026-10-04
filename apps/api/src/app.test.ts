@@ -3,6 +3,9 @@ import request from 'supertest'
 import { app } from './app.js'
 import { store } from './modules/core.store.js'
 
+const seededJimmyDeparture = store.trips.find((trip) => trip.id === 'trip-jimmy')!.departureAt
+const seededDanielDeparture = store.trips.find((trip) => trip.id === 'trip-daniel')!.departureAt
+
 describe('Chippy API vertical slice', () => {
   let cookie = ''
   beforeEach(async () => {
@@ -15,8 +18,10 @@ describe('Chippy API vertical slice', () => {
     store.notifications.length = 0
     store.trips.find((trip) => trip.id === 'trip-jimmy')!.carpoolStatus = 'LOOKING_FOR_RIDE'
     store.trips.find((trip) => trip.id === 'trip-jimmy')!.transportationMode = 'TRANSIT'
+    store.trips.find((trip) => trip.id === 'trip-jimmy')!.departureAt = seededJimmyDeparture
     store.trips.find((trip) => trip.id === 'trip-daniel')!.carpoolStatus = 'OFFERING_RIDE'
     store.trips.find((trip) => trip.id === 'trip-daniel')!.transportationMode = 'DRIVING'
+    store.trips.find((trip) => trip.id === 'trip-daniel')!.departureAt = seededDanielDeparture
     store.trips.find((trip) => trip.id === 'trip-daniel')!.availableSeats = 3
   })
   it('rejects unauthenticated calendar reads', async () => expect((await request(app).get('/api/calendar?start=2026-01-01&end=2026-01-31')).status).toBe(401))
@@ -54,6 +59,15 @@ describe('Chippy API vertical slice', () => {
     expect(JSON.stringify(friendEvent)).not.toContain('Daniel’s neighbourhood')
     const untrusted = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}&friendIds=user-not-a-friend`).set('Cookie', cookie)
     expect(untrusted.body.events.some((event: { kind: string }) => event.kind === 'FRIEND_TRIP')).toBe(false)
+  })
+  it('matches trips when arrivals are close even if departures are not', async () => {
+    const passenger = store.trips.find((trip) => trip.id === 'trip-jimmy')!
+    const driver = store.trips.find((trip) => trip.id === 'trip-daniel')!
+    passenger.transportationMode = 'WALKING'
+    passenger.departureAt = new Date(new Date(driver.departureAt).getTime() - 50 * 60_000).toISOString()
+    const matches = await store.matches('user-jimmy', passenger.id)
+    expect(matches[0]).toMatchObject({ driver: { id: driver.id }, passenger: { id: passenger.id } })
+    expect(Math.abs(matches[0]!.arrivalDifferenceMinutes)).toBeLessThanOrEqual(30)
   })
   it('creates a ride request and gives the driver a route comparison', async () => {
     const response = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })

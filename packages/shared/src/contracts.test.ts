@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { CreateTripSchema, EmailPasswordRegistrationSchema, EmailPasswordSignInSchema, UpdateTripSchema, transportationModes } from './index.js'
+import { CreateTripSchema, EmailPasswordRegistrationSchema, EmailPasswordSignInSchema, UpdateTripSchema, isTimingCompatible, transportationModes } from './index.js'
 
 describe('shared contracts', () => {
   it('keeps transportation modes stable', () => expect(transportationModes).toEqual(['DRIVING', 'TRANSIT', 'WALKING', 'CYCLING']))
@@ -14,5 +14,11 @@ describe('shared contracts', () => {
   })
   it('requires a name and a password of at least ten characters for registration', () => {
     expect(EmailPasswordRegistrationSchema.safeParse({ name: '', email: 'alex@example.com', password: 'short' }).success).toBe(false)
+  })
+  it('accepts timing when departures or arrivals are close enough', () => {
+    expect(isTimingCompatible(20, 45)).toBe(true)
+    expect(isTimingCompatible(50, 20)).toBe(true)
+    expect(isTimingCompatible(50, -20)).toBe(true)
+    expect(isTimingCompatible(50, 45)).toBe(false)
   })
 })
