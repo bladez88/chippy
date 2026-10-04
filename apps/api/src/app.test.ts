@@ -5,6 +5,10 @@ import { store } from './modules/core.store.js'
 
 const seededJimmyDeparture = store.trips.find((trip) => trip.id === 'trip-jimmy')!.departureAt
 const seededDanielDeparture = store.trips.find((trip) => trip.id === 'trip-daniel')!.departureAt
+const seededJimmyOrigin = structuredClone(store.trips.find((trip) => trip.id === 'trip-jimmy')!.origin)
+const seededJimmyDestination = structuredClone(store.trips.find((trip) => trip.id === 'trip-jimmy')!.destination)
+const seededDanielOrigin = structuredClone(store.trips.find((trip) => trip.id === 'trip-daniel')!.origin)
+const seededDanielDestination = structuredClone(store.trips.find((trip) => trip.id === 'trip-daniel')!.destination)
 
 describe('Chippy API vertical slice', () => {
   let cookie = ''
@@ -19,9 +23,13 @@ describe('Chippy API vertical slice', () => {
     store.trips.find((trip) => trip.id === 'trip-jimmy')!.carpoolStatus = 'LOOKING_FOR_RIDE'
     store.trips.find((trip) => trip.id === 'trip-jimmy')!.transportationMode = 'TRANSIT'
     store.trips.find((trip) => trip.id === 'trip-jimmy')!.departureAt = seededJimmyDeparture
+    store.trips.find((trip) => trip.id === 'trip-jimmy')!.origin = structuredClone(seededJimmyOrigin)
+    store.trips.find((trip) => trip.id === 'trip-jimmy')!.destination = structuredClone(seededJimmyDestination)
     store.trips.find((trip) => trip.id === 'trip-daniel')!.carpoolStatus = 'OFFERING_RIDE'
     store.trips.find((trip) => trip.id === 'trip-daniel')!.transportationMode = 'DRIVING'
     store.trips.find((trip) => trip.id === 'trip-daniel')!.departureAt = seededDanielDeparture
+    store.trips.find((trip) => trip.id === 'trip-daniel')!.origin = structuredClone(seededDanielOrigin)
+    store.trips.find((trip) => trip.id === 'trip-daniel')!.destination = structuredClone(seededDanielDestination)
     store.trips.find((trip) => trip.id === 'trip-daniel')!.availableSeats = 3
   })
   it('rejects unauthenticated calendar reads', async () => expect((await request(app).get('/api/calendar?start=2026-01-01&end=2026-01-31')).status).toBe(401))
@@ -128,7 +136,20 @@ describe('Chippy API vertical slice', () => {
     expect(response.body.trip).toMatchObject({ transportationMode: 'TRANSIT', carpoolStatus: 'NONE' })
     expect(store.trips.find((trip) => trip.id === 'trip-jimmy')?.carpoolStatus).toBe('LOOKING_FOR_RIDE')
     expect(store.carpools).toHaveLength(0)
-    expect(store.notifications.some((notification) => notification.userId === 'user-jimmy' && notification.type === 'CARPOOL_CANCELLED')).toBe(true)
+    expect(store.notifications.some((notification) => notification.userId === 'user-jimmy' && notification.type === 'CARPOOL_CANCELLED' && notification.title === 'Drive changed')).toBe(true)
+  })
+  it('updates route snapshots and notifies passengers when a driver changes location', async () => {
+    const created = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })
+    const driverLogin = await request(app).post('/api/auth/dev-login').send({ userId: 'user-daniel' }); const driverCookie = driverLogin.headers['set-cookie']?.[0] ?? ''
+    await request(app).patch(`/api/ride-requests/${created.body.request.id}/accept`).set('Cookie', driverCookie)
+    const driverTrip = store.trips.find((trip) => trip.id === 'trip-daniel')!
+    const newOrigin = { label: 'Sushi Modo', address: '7874 Edmonds St, Burnaby, BC, Canada', latitude: 49.2194, longitude: -122.9339 }
+    const response = await request(app).patch('/api/trips/trip-daniel').set('Cookie', driverCookie).send({ origin: newOrigin, destination: driverTrip.destination, departureAt: driverTrip.departureAt, timezone: driverTrip.timezone, transportationMode: 'DRIVING', carpoolStatus: 'OFFERING_RIDE', availableSeats: 3 })
+    expect(response.status).toBe(200)
+    expect(response.body.trip.origin).toEqual(newOrigin)
+    expect(store.trips.find((trip) => trip.id === 'trip-jimmy')?.carpoolStatus).toBe('LOOKING_FOR_RIDE')
+    expect(store.carpools).toHaveLength(0)
+    expect(store.notifications.some((notification) => notification.userId === 'user-jimmy' && notification.type === 'CARPOOL_CANCELLED' && notification.title === 'Drive changed')).toBe(true)
   })
   it('lets a driver remove a passenger and restores the passenger trip', async () => {
     const created = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })

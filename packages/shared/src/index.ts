@@ -58,6 +58,8 @@ export const CreateTripSchema = TripBaseSchema.extend({
 export type CreateTripInput = z.infer<typeof CreateTripSchema>
 
 export const UpdateTripSchema = z.object({
+  origin: LocationSchema.optional(),
+  destination: LocationSchema.optional(),
   departureAt: z.iso.datetime(),
   timezone: z.string().min(1),
   transportationMode: TransportationModeSchema,

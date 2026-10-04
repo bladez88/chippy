@@ -19,6 +19,7 @@ import { DateTime } from 'luxon'
 import type { RoutingService } from '../integrations/routing/routing-service.js'
 import { routingService } from '../integrations/routing/index.js'
 import { DomainError } from './core.store.js'
+import { sameLocationSnapshot } from './location.js'
 import { privacySafePickupLabel } from './privacy.js'
 import type { CarpoolSummary, ChippyStore, MapFeatureCollection, MatchResult, RoutePlan } from './store.js'
 
@@ -169,7 +170,12 @@ export class PrismaStore implements ChippyStore {
       return await this.prisma.$transaction(async (tx) => {
         const trip = await tx.trip.findFirst({ where: { id: tripId, userId } })
         if (!trip) throw new DomainError('NOT_FOUND', 'Trip not found', 404)
-        const disruptsCoordination = trip.departureAt.toISOString() !== input.departureAt || trip.transportationMode !== input.transportationMode || trip.carpoolStatus !== input.carpoolStatus
+        const currentOrigin = location('origin', trip)
+        const currentDestination = location('destination', trip)
+        const nextOrigin = input.origin ?? currentOrigin
+        const nextDestination = input.destination ?? currentDestination
+        const locationChanged = !sameLocationSnapshot(currentOrigin, nextOrigin) || !sameLocationSnapshot(currentDestination, nextDestination)
+        const disruptsCoordination = locationChanged || trip.departureAt.toISOString() !== input.departureAt || trip.transportationMode !== input.transportationMode || trip.carpoolStatus !== input.carpoolStatus
 
         if (disruptsCoordination) {
           const carpool = await tx.carpool.findFirst({
@@ -203,10 +209,13 @@ export class PrismaStore implements ChippyStore {
         }
 
         const updated = await tx.trip.update({ where: { id: tripId }, data: {
+          originLabel: nextOrigin.label, originAddress: nextOrigin.address, originLat: nextOrigin.latitude, originLng: nextOrigin.longitude,
+          destinationLabel: nextDestination.label, destinationAddress: nextDestination.address, destinationLat: nextDestination.latitude, destinationLng: nextDestination.longitude,
           departureAt: new Date(input.departureAt), timezone: input.timezone,
           transportationMode: input.transportationMode, carpoolStatus: input.carpoolStatus,
           availableSeats: input.carpoolStatus === 'OFFERING_RIDE' ? input.availableSeats : null,
         } })
+        if (locationChanged) await setTripGeographies(tx, tripId)
         return tripDto(updated)
       })
     } catch (error) {

@@ -4,6 +4,7 @@ import { DateTime } from 'luxon'
 import { randomUUID } from 'node:crypto'
 import type { RoutingService } from '../integrations/routing/routing-service.js'
 import { routingService } from '../integrations/routing/index.js'
+import { sameLocationSnapshot } from './location.js'
 import { privacySafePickupLabel } from './privacy.js'
 import type { ChippyStore, MapFeatureCollection } from './store.js'
 
@@ -78,12 +79,14 @@ export class CoreStore implements ChippyStore {
   updateTrip(userId: string, tripId: string, input: UpdateTripInput) {
     const trip = this.trips.find((item) => item.id === tripId && item.userId === userId)
     if (!trip) throw new DomainError('NOT_FOUND', 'Trip not found', 404)
-    const disruptsCoordination = trip.departureAt !== input.departureAt || trip.transportationMode !== input.transportationMode || trip.carpoolStatus !== input.carpoolStatus
+    const nextOrigin = input.origin ?? trip.origin
+    const nextDestination = input.destination ?? trip.destination
+    const disruptsCoordination = !sameLocationSnapshot(trip.origin, nextOrigin) || !sameLocationSnapshot(trip.destination, nextDestination) || trip.departureAt !== input.departureAt || trip.transportationMode !== input.transportationMode || trip.carpoolStatus !== input.carpoolStatus
     if (disruptsCoordination) {
       const carpool = this.carpools.find((item) => item.driverTripId === tripId || item.participantTripIds.includes(tripId))
       if (carpool) {
-        if (carpool.driverTripId === tripId) this.cancelCarpool(userId, carpool.id)
-        else this.removePassengerFromCarpool(carpool.id, tripId, userId)
+        if (carpool.driverTripId === tripId) this.cancelCarpool(userId, carpool.id, 'changed')
+        else this.removePassengerFromCarpool(carpool.id, tripId, userId, 'changed')
       }
       this.requests.filter((request) => (request.driverTripId === tripId || request.passengerTripId === tripId) && request.status === 'PENDING').forEach((request) => {
         request.status = 'CANCELLED'
@@ -91,6 +94,8 @@ export class CoreStore implements ChippyStore {
         if (passenger && passenger.id !== tripId) passenger.carpoolStatus = 'LOOKING_FOR_RIDE'
       })
     }
+    trip.origin = nextOrigin
+    trip.destination = nextDestination
     trip.departureAt = input.departureAt
     trip.timezone = input.timezone
     trip.transportationMode = input.transportationMode
@@ -234,7 +239,7 @@ export class CoreStore implements ChippyStore {
     const currentIndex = this.trips.findIndex((trip) => trip.id === tripId)
     if (currentIndex >= 0) this.trips.splice(currentIndex, 1)
   }
-  cancelCarpool(userId: string, carpoolId: string) {
+  cancelCarpool(userId: string, carpoolId: string, reason: 'cancelled' | 'changed' = 'cancelled') {
     const index = this.carpools.findIndex((item) => item.id === carpoolId)
     const carpool = this.carpools[index]
     const driver = carpool && this.trips.find((trip) => trip.id === carpool.driverTripId)
@@ -244,7 +249,7 @@ export class CoreStore implements ChippyStore {
       const passenger = this.trips.find((trip) => trip.id === passengerTripId)
       if (!passenger) continue
       passenger.carpoolStatus = 'LOOKING_FOR_RIDE'
-      this.notify(passenger.userId, 'CARPOOL_CANCELLED', 'Drive cancelled', `${this.user(driver.userId)?.name} cancelled the drive. Your original trip is available again.`, carpool.id)
+      this.notify(passenger.userId, 'CARPOOL_CANCELLED', reason === 'changed' ? 'Drive changed' : 'Drive cancelled', `${this.user(driver.userId)?.name} ${reason === 'changed' ? 'changed' : 'cancelled'} the drive. Your original trip is available again.`, carpool.id)
     }
     this.requests.filter((request) => request.driverTripId === driver.id && request.status === 'ACCEPTED').forEach((request) => { request.status = 'CANCELLED' })
     driver.carpoolStatus = 'OFFERING_RIDE'
@@ -263,7 +268,7 @@ export class CoreStore implements ChippyStore {
     if (!carpool || !passengerTrip) throw new DomainError('NOT_FOUND', 'Your confirmed ride was not found', 404)
     this.removePassengerFromCarpool(carpoolId, passengerTrip.id, userId)
   }
-  private removePassengerFromCarpool(carpoolId: string, passengerTripId: string, actorUserId: string) {
+  private removePassengerFromCarpool(carpoolId: string, passengerTripId: string, actorUserId: string, reason: 'left' | 'changed' = 'left') {
     const carpool = this.carpools.find((item) => item.id === carpoolId)
     const participantIndex = carpool?.participantTripIds.indexOf(passengerTripId) ?? -1
     const passenger = this.trips.find((trip) => trip.id === passengerTripId)
@@ -274,7 +279,7 @@ export class CoreStore implements ChippyStore {
     driver.carpoolStatus = carpool.participantTripIds.length ? 'MATCHED' : 'OFFERING_RIDE'
     this.requests.filter((request) => request.driverTripId === driver.id && request.passengerTripId === passenger.id && request.status === 'ACCEPTED').forEach((request) => { request.status = 'CANCELLED' })
     const otherUserId = actorUserId === driver.userId ? passenger.userId : driver.userId
-    this.notify(otherUserId, 'CARPOOL_CANCELLED', actorUserId === driver.userId ? 'Passenger removed' : 'Passenger left', actorUserId === driver.userId ? 'Your original trip is available again.' : `${this.user(passenger.userId)?.name} left the carpool.`, carpool.id)
+    this.notify(otherUserId, 'CARPOOL_CANCELLED', actorUserId === driver.userId ? 'Passenger removed' : reason === 'changed' ? 'Passenger changed trip' : 'Passenger left', actorUserId === driver.userId ? 'Your original trip is available again.' : `${this.user(passenger.userId)?.name} ${reason === 'changed' ? 'changed their trip and left' : 'left'} the carpool.`, carpool.id)
     if (!carpool.participantTripIds.length) this.carpools.splice(this.carpools.indexOf(carpool), 1)
   }
   async tripRoutePlan(userId: string, tripId: string): Promise<TripRoutePlan> {

@@ -17,7 +17,7 @@ Validation failures include a stable code, safe message, field errors when avail
 
 `POST /auth/dev-login` is available only when development auth is explicitly enabled outside production. Google sign-in remains optional.
 
-`PATCH /trips/:id` edits one dated occurrence with `departureAt`, `timezone`, `transportationMode`, `carpoolStatus`, and optional `availableSeats`. It does not rewrite a recurring series. A coordination-changing edit removes the occurrence from any confirmed carpool, restores affected passenger trips, cancels related ride requests, and creates in-app notifications.
+`PATCH /trips/:id` edits one dated occurrence with optional `origin` and `destination` snapshots plus `departureAt`, `timezone`, `transportationMode`, `carpoolStatus`, and optional `availableSeats`. It does not rewrite a recurring series. Changing a location, time, transportation mode, or carpool state removes the occurrence from any confirmed carpool, restores affected passenger trips, cancels related ride requests, and creates in-app notifications. Persistent location edits also refresh the occurrence's PostGIS geography points.
 
 `GET /calendar` accepts an optional comma-separated `friendIds` list (up to 20). Only accepted friends are honored. Their events use the `FRIEND_TRIP` discriminator and expose private schedule blocks without exact origin or destination labels.
 

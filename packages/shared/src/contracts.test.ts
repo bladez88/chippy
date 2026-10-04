@@ -9,6 +9,10 @@ describe('shared contracts', () => {
   it('applies the same ride-offer invariant to trip edits', () => {
     expect(UpdateTripSchema.safeParse({ departureAt: new Date().toISOString(), timezone: 'America/Vancouver', transportationMode: 'TRANSIT', carpoolStatus: 'OFFERING_RIDE', availableSeats: 2 }).success).toBe(false)
   })
+  it('accepts validated origin and destination snapshots for trip edits', () => {
+    const location = { label: 'Sushi Modo', address: '7874 Edmonds St, Burnaby, BC', latitude: 49.2194, longitude: -122.9339 }
+    expect(UpdateTripSchema.safeParse({ origin: location, destination: { ...location, label: 'SFU' }, departureAt: new Date().toISOString(), timezone: 'America/Vancouver', transportationMode: 'DRIVING', carpoolStatus: 'NONE' }).success).toBe(true)
+  })
   it('normalizes email credentials at the contract boundary', () => {
     expect(EmailPasswordSignInSchema.parse({ email: '  Alex@Example.COM ', password: 'long-enough-password' }).email).toBe('alex@example.com')
   })
