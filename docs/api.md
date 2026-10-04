@@ -22,3 +22,5 @@ Validation failures include a stable code, safe message, field errors when avail
 `GET /calendar` accepts an optional comma-separated `friendIds` list (up to 20). Only accepted friends are honored. Their events use the `FRIEND_TRIP` discriminator and expose private schedule blocks without exact origin or destination labels.
 
 Potential-match calendar events include `originalArrivalAt`, `carpoolArrivalAt`, and a signed `arrivalDifferenceMinutes`. Positive differences mean the passenger would arrive later; negative differences mean earlier.
+
+Pending ride requests keep passenger pickup details private. The route comparison returns a generalized city-area label unless the pickup is within 150 metres of the driver's own origin; in that same-origin case, it reuses the driver's already-visible origin label without exposing the passenger's private label or address. Confirmed participants receive the exact pickup details through the trip route plan.

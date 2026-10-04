@@ -19,6 +19,7 @@ import { DateTime } from 'luxon'
 import type { RoutingService } from '../integrations/routing/routing-service.js'
 import { routingService } from '../integrations/routing/index.js'
 import { DomainError } from './core.store.js'
+import { privacySafePickupLabel } from './privacy.js'
 import type { CarpoolSummary, ChippyStore, MapFeatureCollection, MatchResult, RoutePlan } from './store.js'
 
 type Db = PrismaClient | Prisma.TransactionClient
@@ -365,7 +366,7 @@ export class PrismaStore implements ChippyStore {
         originalArrivalAt: departure.plus({ seconds: original.durationSeconds }).toUTC().toISO()!, proposedArrivalAt: departure.plus({ seconds: proposed.durationSeconds }).toUTC().toISO()!, pickupAt: departure.plus({ seconds: proposed.legs[0]?.durationSeconds ?? 0 }).toUTC().toISO()!,
         originalDistanceMeters: Math.round(original.distanceMeters), proposedDistanceMeters: Math.round(proposed.distanceMeters), addedDistanceMeters: Math.max(0, Math.round(proposed.distanceMeters - original.distanceMeters)),
         originalDurationMinutes, proposedDurationMinutes, addedDurationMinutes: Math.max(0, proposedDurationMinutes - originalDurationMinutes),
-        routeStops: { from: driver.origin.label, pickup: generalArea(passenger.origin.address), to: driver.destination.label },
+        routeStops: { from: driver.origin.label, pickup: privacySafePickupLabel(driver.origin, passenger.origin), to: driver.destination.label },
       } }
     }))
   }
@@ -547,4 +548,3 @@ const recurrenceDates = (input: CreateTripInput) => {
 
 const labelMode = (mode: TransportationMode) => ({ DRIVING: 'Driving', TRANSIT: 'Transit', WALKING: 'Walking', CYCLING: 'Cycling' })[mode]
 const haversine = (a: Location, b: Location) => { const rad = (v: number) => v * Math.PI / 180; const dLat = rad(b.latitude - a.latitude); const dLng = rad(b.longitude - a.longitude); const h = Math.sin(dLat / 2) ** 2 + Math.cos(rad(a.latitude)) * Math.cos(rad(b.latitude)) * Math.sin(dLng / 2) ** 2; return 6_371_000 * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)) }
-const generalArea = (address: string) => { const parts = address.split(',').map((part) => part.trim()).filter(Boolean); const last = parts.at(-1)?.toLowerCase(); const cityIndex = last === 'canada' || last === 'ca' ? parts.length - 3 : parts.length > 2 ? parts.length - 2 : 0; return `${parts[Math.max(0, cityIndex)] ?? 'Pickup'} area` }
