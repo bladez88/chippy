@@ -44,3 +44,6 @@
 
 /* Keep the light logo distinct from the warm page background. */
 .brand-mark{width:44px;height:44px;padding:3px;border:1px solid rgba(216,115,63,.45);border-radius:14px;background:var(--orange);box-shadow:0 4px 12px rgba(216,115,63,.18)}
+
+/* Leaflet defaults controls to z-index 800, the same layer as the app nav. */
+.map-page .leaflet-control{z-index:400}
