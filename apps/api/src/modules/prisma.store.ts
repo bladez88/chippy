@@ -10,6 +10,7 @@ import type {
   TripDto,
   TripRoutePlan,
   UserDto,
+  EmailPasswordRegistrationInput,
 } from '@chippy/shared'
 import { Prisma, PrismaClient } from '@prisma/client'
 import { DateTime } from 'luxon'
@@ -95,11 +96,26 @@ export class PrismaStore implements ChippyStore {
     return user ? userDto(user) : undefined
   }
 
+  async credentialByEmail(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email } })
+    return user ? { user: userDto(user), passwordHash: user.passwordHash } : undefined
+  }
+
+  async createPasswordUser(input: Omit<EmailPasswordRegistrationInput, 'password'> & { passwordHash: string }) {
+    try {
+      return userDto(await this.prisma.user.create({ data: { email: input.email, name: input.name, passwordHash: input.passwordHash, timezone: 'America/Vancouver' } }))
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') throw new DomainError('EMAIL_IN_USE', 'An account already exists for that email', 409)
+      throw error
+    }
+  }
+
   async findOrCreateGoogleUser(profile: { email: string; name: string; avatarUrl: string | null }) {
+    const email = profile.email.toLowerCase()
     return userDto(await this.prisma.user.upsert({
-      where: { email: profile.email },
+      where: { email },
       update: { name: profile.name, avatarUrl: profile.avatarUrl },
-      create: { ...profile, timezone: 'America/Vancouver' },
+      create: { ...profile, email, timezone: 'America/Vancouver' },
     }))
   }
 

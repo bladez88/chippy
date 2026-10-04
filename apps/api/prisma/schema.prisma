@@ -60,6 +60,7 @@ model User {
   email String @unique
   name String
   avatarUrl String?
+  passwordHash String?
   timezone String @default("America/Vancouver")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

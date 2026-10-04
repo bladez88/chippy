@@ -41,6 +41,7 @@ This is an npm-workspaces monorepo. Use npm; do not introduce a second package m
 - `DATA_STORE=prisma` persists API workflows in PostgreSQL/PostGIS, with transactional ride/carpool transitions.
 - Map rendering uses Leaflet and OpenStreetMap tiles.
 - Routes and detour estimates are currently deterministic demo calculations, not live road routes.
+- Email/password registration and sign-in are available; password hashes use salted scrypt and are optional for Google-only or seeded accounts.
 - Google Identity Services can be enabled with environment configuration.
 - Google Maps and live openrouteservice variables are declared for setup, but those location providers are not wired yet.
 

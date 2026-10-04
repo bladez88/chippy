@@ -6,7 +6,7 @@ Chippy is a mobile-first private carpool planner for friends. It combines recurr
 
 - The web app uses Leaflet and OpenStreetMap raster tiles.
 - With `ROUTING_PROVIDER=ors`, location search, route geometry, travel time, matrices, and detour validation use OpenRouteService through the backend. Automated tests stay deterministic.
-- Authentication supports a local two-user demo and Google Identity Services when configured.
+- Authentication supports email/password accounts, optional Google Identity Services, and a development-only two-user demo.
 - The API supports a credential-free in-memory store and a persistent Prisma/PostgreSQL/PostGIS store selected with `DATA_STORE`.
 - Trip creation, friendships, matching, ride requests, carpools, notifications, and map/calendar reads use the selected store. Multi-record ride and carpool transitions are transactional in the Prisma adapter.
 
@@ -54,6 +54,12 @@ Generate a local session secret and place the result in `apps/api/.env` as `JWT_
 ```bash
 openssl rand -base64 32
 ```
+
+### Email and password sign-in
+
+No external identity provider is required. The sign-in screen can create an account with a name, email, and password, then signs the user in with the same HTTP-only session cookie used by Google sign-in. Passwords must be 10–128 characters and are stored only as salted scrypt hashes.
+
+Email verification, password reset, and account-recovery email are not part of this milestone. Add those flows before relying on email/password authentication for a broad public launch. The API rate-limits registration and sign-in attempts in memory; a multi-instance production deployment should move that limiter to a shared store such as Redis.
 
 ### Google sign-in
 
@@ -146,7 +152,7 @@ VITE_API_URL=https://api.example.tech/api
 VITE_GOOGLE_CLIENT_ID=your-web-client-id.apps.googleusercontent.com
 ```
 
-Replace `example.tech` with the deployed domain. Do not add `DATABASE_URL`, `JWT_SECRET`, or provider secrets to the frontend project. After changing a `VITE_` variable, redeploy because Vite embeds it during the build.
+Replace `example.tech` with the deployed domain. `VITE_GOOGLE_CLIENT_ID` is optional; omit it to offer email/password sign-in only. The local demo controls are compiled out of production builds. Do not add `DATABASE_URL`, `JWT_SECRET`, or provider secrets to the frontend project. After changing a `VITE_` variable, redeploy because Vite embeds it during the build.
 
 ## Commands
 

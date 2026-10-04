@@ -3,7 +3,7 @@ import cors from 'cors'
 import cookieParser from 'cookie-parser'
 import { randomUUID } from 'node:crypto'
 import { z } from 'zod'
-import { CreateTripSchema } from '@chippy/shared'
+import { CreateTripSchema, EmailPasswordRegistrationSchema, EmailPasswordSignInSchema } from '@chippy/shared'
 import { env } from './config/env.js'
 import { DomainError } from './modules/core.store.js'
 import { store, storeKind } from './modules/runtime.store.js'
@@ -11,15 +11,33 @@ import { issueSession, requireAuth, SESSION_COOKIE } from './middleware/auth.js'
 import { verifyGoogleCredential } from './integrations/google/google-verifier.js'
 import { routingService } from './integrations/routing/index.js'
 import { RoutingProviderError } from './integrations/routing/routing-service.js'
+import { PasswordAuthService } from './modules/auth/password-auth.service.js'
+import { authRateLimit } from './middleware/auth-rate-limit.js'
 
 export const app = express()
 app.disable('x-powered-by')
+app.set('trust proxy', 1)
 app.use(cors({ origin: env.CLIENT_URL, credentials: true }))
 app.use(express.json({ limit: '100kb' }))
 app.use(cookieParser())
 app.use((_req, res, next) => { res.locals.requestId = randomUUID(); res.setHeader('x-request-id', res.locals.requestId); next() })
+const passwordAuth = new PasswordAuthService(store)
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok', store: storeKind }))
+app.post('/api/auth/register', authRateLimit, async (req, res, next) => {
+  try {
+    const user = await passwordAuth.register(EmailPasswordRegistrationSchema.parse(req.body))
+    issueSession(res, user.id)
+    res.status(201).json({ user })
+  } catch (error) { next(error) }
+})
+app.post('/api/auth/login', authRateLimit, async (req, res, next) => {
+  try {
+    const user = await passwordAuth.signIn(EmailPasswordSignInSchema.parse(req.body))
+    issueSession(res, user.id)
+    res.json({ user })
+  } catch (error) { next(error) }
+})
 app.post('/api/auth/dev-login', async (req, res, next) => {
   try {
   if (!env.ENABLE_DEV_AUTH || env.NODE_ENV === 'production') return res.status(404).end()

@@ -9,6 +9,7 @@ import type {
   TripDto,
   TripRoutePlan,
   UserDto,
+  EmailPasswordRegistrationInput,
 } from '@chippy/shared'
 
 export type MaybePromise<T> = T | Promise<T>
@@ -49,6 +50,8 @@ export type MapFeatureCollection = {
 
 export interface ChippyStore {
   user(id: string): MaybePromise<UserDto | undefined>
+  credentialByEmail(email: string): MaybePromise<{ user: UserDto; passwordHash: string | null } | undefined>
+  createPasswordUser(input: Omit<EmailPasswordRegistrationInput, 'password'> & { passwordHash: string }): MaybePromise<UserDto>
   findOrCreateGoogleUser(profile: { email: string; name: string; avatarUrl: string | null }): MaybePromise<UserDto>
   listTrips(userId: string): MaybePromise<TripDto[]>
   createTrips(userId: string, input: CreateTripInput): MaybePromise<TripDto[]>

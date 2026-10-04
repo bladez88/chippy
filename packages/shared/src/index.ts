@@ -15,6 +15,17 @@ export type CarpoolStatus = z.infer<typeof CarpoolStatusSchema>
 export type RideRequestStatus = z.infer<typeof RideRequestStatusSchema>
 export type CalendarEventKind = z.infer<typeof CalendarEventKindSchema>
 
+export const EmailPasswordSignInSchema = z.object({
+  email: z.string().trim().toLowerCase().pipe(z.email()),
+  password: z.string().min(10).max(128),
+})
+export type EmailPasswordSignInInput = z.infer<typeof EmailPasswordSignInSchema>
+
+export const EmailPasswordRegistrationSchema = EmailPasswordSignInSchema.extend({
+  name: z.string().trim().min(1).max(80),
+})
+export type EmailPasswordRegistrationInput = z.infer<typeof EmailPasswordRegistrationSchema>
+
 export const LocationSchema = z.object({
   label: z.string().trim().min(1).max(80),
   address: z.string().trim().min(1).max(240),

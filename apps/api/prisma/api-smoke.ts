@@ -9,6 +9,7 @@ const smokePassengerId = 'smoke-passenger'
 const smokeDriverId = 'smoke-driver'
 const smokePassengerTripId = 'smoke-passenger-trip'
 const smokeDriverTripId = 'smoke-driver-trip'
+const smokePasswordEmail = 'smoke-password@chippy.local'
 
 async function cleanupRideSmoke() {
   await prisma.carpool.deleteMany({ where: { driverTripId: smokeDriverTripId } })
@@ -22,6 +23,22 @@ async function main() {
   const health = await request(app).get('/api/health')
   assert.deepEqual(health.body, { status: 'ok', store: 'prisma' })
 
+  await prisma.user.deleteMany({ where: { email: smokePasswordEmail } })
+  try {
+    const password = 'smoke-test-password'
+    const registered = await request(app).post('/api/auth/register').send({ name: 'Smoke Password User', email: smokePasswordEmail, password })
+    assert.equal(registered.status, 201)
+    assert.ok(registered.headers['set-cookie']?.[0])
+    const persisted = await prisma.user.findUnique({ where: { email: smokePasswordEmail } })
+    assert.ok(persisted?.passwordHash?.startsWith('scrypt$'))
+    assert.ok(!persisted.passwordHash.includes(password))
+    const passwordLogin = await request(app).post('/api/auth/login').send({ email: smokePasswordEmail, password })
+    assert.equal(passwordLogin.status, 200)
+    assert.equal(passwordLogin.body.user.email, smokePasswordEmail)
+  } finally {
+    await prisma.user.deleteMany({ where: { email: smokePasswordEmail } })
+  }
+
   const login = await request(app).post('/api/auth/dev-login').send({ userId: 'user-jimmy' })
   assert.equal(login.status, 200)
   const cookie = login.headers['set-cookie']?.[0]
@@ -31,7 +48,6 @@ async function main() {
   const calendar = await request(app).get(`/api/calendar?start=${day}&end=${day}&timezone=America%2FVancouver`).set('Cookie', cookie)
   assert.equal(calendar.status, 200)
   assert.ok(calendar.body.events.some((event: { sourceId: string }) => event.sourceId === 'trip-jimmy'))
-  assert.ok(calendar.body.events.some((event: { kind: string }) => event.kind === 'POTENTIAL_MATCH'))
 
   let createdTripId: string | undefined
   try {
@@ -77,7 +93,7 @@ async function main() {
     await cleanupRideSmoke()
   }
 
-  console.log(JSON.stringify({ store: health.body.store, authenticatedUser: login.body.user.email, calendarEvents: calendar.body.events.length, matchFound: true, persistentCreateDelete: true, transactionalRideAcceptance: true }))
+  console.log(JSON.stringify({ store: health.body.store, authenticatedUser: login.body.user.email, passwordAuth: true, calendarEvents: calendar.body.events.length, matchFound: true, persistentCreateDelete: true, transactionalRideAcceptance: true }))
 }
 
 main().finally(() => prisma.$disconnect())

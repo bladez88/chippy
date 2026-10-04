@@ -5,9 +5,43 @@ import { store } from './modules/core.store.js'
 
 describe('Chippy API vertical slice', () => {
   let cookie = ''
-  beforeEach(async () => { const response = await request(app).post('/api/auth/dev-login').send({ userId: 'user-jimmy' }); cookie = response.headers['set-cookie']?.[0] ?? ''; store.requests.length = 0; store.carpools.length = 0; store.notifications.length = 0; store.trips.find((trip) => trip.id === 'trip-jimmy')!.carpoolStatus = 'LOOKING_FOR_RIDE'; store.trips.find((trip) => trip.id === 'trip-daniel')!.carpoolStatus = 'OFFERING_RIDE' })
+  beforeEach(async () => {
+    const response = await request(app).post('/api/auth/dev-login').send({ userId: 'user-jimmy' })
+    cookie = response.headers['set-cookie']?.[0] ?? ''
+    store.users = store.users.filter((user) => !user.id.startsWith('user-password-'))
+    store.passwordHashes.clear()
+    store.requests.length = 0
+    store.carpools.length = 0
+    store.notifications.length = 0
+    store.trips.find((trip) => trip.id === 'trip-jimmy')!.carpoolStatus = 'LOOKING_FOR_RIDE'
+    store.trips.find((trip) => trip.id === 'trip-daniel')!.carpoolStatus = 'OFFERING_RIDE'
+  })
   it('rejects unauthenticated calendar reads', async () => expect((await request(app).get('/api/calendar?start=2026-01-01&end=2026-01-31')).status).toBe(401))
   it('returns the authenticated profile', async () => expect((await request(app).get('/api/auth/me').set('Cookie', cookie)).body.user.email).toBe('jimmy@chippy.local'))
+  it('registers an email/password account and signs it in', async () => {
+    const credentials = { name: 'Alex Chen', email: '  ALEX@example.com ', password: 'correct-horse-battery-staple' }
+    const registered = await request(app).post('/api/auth/register').send(credentials)
+    expect(registered.status).toBe(201)
+    expect(registered.body.user).toMatchObject({ name: 'Alex Chen', email: 'alex@example.com' })
+    expect(registered.headers['set-cookie']?.[0]).toContain('chippy_session=')
+    const storedHash = store.passwordHashes.get(registered.body.user.id)
+    expect(storedHash).toMatch(/^scrypt\$/)
+    expect(storedHash).not.toContain(credentials.password)
+
+    const signedIn = await request(app).post('/api/auth/login').send({ email: 'alex@example.com', password: credentials.password })
+    expect(signedIn.status).toBe(200)
+    expect(signedIn.body.user.id).toBe(registered.body.user.id)
+  })
+  it('rejects duplicate registration and incorrect passwords without exposing account details', async () => {
+    const credentials = { name: 'Alex Chen', email: 'alex@example.com', password: 'correct-horse-battery-staple' }
+    await request(app).post('/api/auth/register').send(credentials)
+    const duplicate = await request(app).post('/api/auth/register').send(credentials)
+    expect(duplicate.status).toBe(409)
+    expect(duplicate.body.error.code).toBe('EMAIL_IN_USE')
+    const rejected = await request(app).post('/api/auth/login').send({ email: credentials.email, password: 'definitely-not-the-password' })
+    expect(rejected.status).toBe(401)
+    expect(rejected.body.error).toMatchObject({ code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect' })
+  })
   it('returns calendar events', async () => { const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000); const response = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}`).set('Cookie', cookie); expect(response.status).toBe(200); expect(response.body.events.length).toBeGreaterThan(0) })
   it('creates a ride request and gives the driver a route comparison', async () => {
     const response = await request(app).post('/api/ride-requests').set('Cookie', cookie).send({ driverTripId: 'trip-daniel', passengerTripId: 'trip-jimmy', fuelContributionAmount: 2 })

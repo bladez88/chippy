@@ -1,4 +1,4 @@
-import type { CalendarEvent, CarpoolStatus, CreateTripInput, FriendDto, Location, NotificationDto, RideRequestDto, TransportationMode, TripDto, TripRoutePlan, UserDto } from '@chippy/shared'
+import type { CalendarEvent, CarpoolStatus, CreateTripInput, EmailPasswordRegistrationInput, FriendDto, Location, NotificationDto, RideRequestDto, TransportationMode, TripDto, TripRoutePlan, UserDto } from '@chippy/shared'
 import { DateTime } from 'luxon'
 import { randomUUID } from 'node:crypto'
 import type { RoutingService } from '../integrations/routing/routing-service.js'
@@ -28,16 +28,29 @@ export class CoreStore implements ChippyStore {
   requests: InternalRequest[] = []
   notifications: InternalNotification[] = []
   carpools: { id: string; driverTripId: string; participantTripIds: string[]; detourMinutes: number }[] = []
+  passwordHashes = new Map<string, string>()
 
   private trip(id: string, userId: string, origin: Location, destination: Location, departureAt: string, transportationMode: TransportationMode, carpoolStatus: CarpoolStatus, availableSeats?: number): TripDto {
     return { id, userId, scheduleId: null, origin, destination, departureAt, timezone: 'America/Vancouver', transportationMode, carpoolStatus, availableSeats, estimatedArrivalAt: null }
   }
 
   user(id: string) { return this.users.find((user) => user.id === id) }
+  credentialByEmail(email: string) {
+    const user = this.users.find((item) => item.email === email)
+    return user ? { user, passwordHash: this.passwordHashes.get(user.id) ?? null } : undefined
+  }
+  createPasswordUser(input: Omit<EmailPasswordRegistrationInput, 'password'> & { passwordHash: string }) {
+    if (this.users.some((item) => item.email === input.email)) throw new DomainError('EMAIL_IN_USE', 'An account already exists for that email', 409)
+    const user = { id: `user-password-${randomUUID()}`, email: input.email, name: input.name, avatarUrl: null, timezone: 'America/Vancouver' }
+    this.users.push(user)
+    this.passwordHashes.set(user.id, input.passwordHash)
+    return user
+  }
   findOrCreateGoogleUser(profile: { email: string; name: string; avatarUrl: string | null }) {
-    let user = this.users.find((item) => item.email === profile.email)
+    const email = profile.email.toLowerCase()
+    let user = this.users.find((item) => item.email === email)
     if (!user) {
-      user = { id: randomUUID(), ...profile, timezone: 'America/Vancouver' }
+      user = { id: randomUUID(), ...profile, email, timezone: 'America/Vancouver' }
       this.users.push(user)
     }
     return user
