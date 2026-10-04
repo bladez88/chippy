@@ -3,6 +3,8 @@ import type { LocationSuggestion, RouteResult, RoutingService } from '../routing
 import { RoutingProviderError } from '../routing/routing-service.js'
 
 const profile: Record<TransportationMode, string> = { DRIVING: 'driving-car', TRANSIT: 'driving-car', WALKING: 'foot-walking', CYCLING: 'cycling-regular' }
+const TRANSIT_ROAD_TIME_MULTIPLIER = 1.35
+const TRANSIT_WAIT_SECONDS = 8 * 60
 type CacheEntry<T> = { expiresAt: number; value: T }
 
 export class OpenRouteServiceClient implements RoutingService {
@@ -23,12 +25,13 @@ export class OpenRouteServiceClient implements RoutingService {
     const route = data.features[0]
     if (!route) throw new RoutingProviderError('No route was found for those locations', 422)
     const legs = route.properties.segments?.map((segment) => ({ distanceMeters: segment.distance, durationSeconds: segment.duration })) ?? [{ distanceMeters: route.properties.summary.distance, durationSeconds: route.properties.summary.duration }]
-    return { distanceMeters: route.properties.summary.distance, durationSeconds: route.properties.summary.duration, geometry: route.geometry.coordinates, legs }
+    const result = { distanceMeters: route.properties.summary.distance, durationSeconds: route.properties.summary.duration, geometry: route.geometry.coordinates, legs }
+    return mode === 'TRANSIT' ? estimateTransitRoute(result) : result
   }
 
   async getMatrix(locations: Location[], mode: TransportationMode) {
     const data = await this.request<{ distances: number[][]; durations: number[][] }>(`/v2/matrix/${profile[mode]}`, { method: 'POST', body: JSON.stringify({ locations: locations.map((location) => [location.longitude, location.latitude]), metrics: ['distance', 'duration'] }) })
-    return { distances: data.distances, durations: data.durations }
+    return { distances: data.distances, durations: mode === 'TRANSIT' ? data.durations.map((row) => row.map((seconds) => seconds > 0 ? estimateTransitDurationSeconds(seconds) : seconds)) : data.durations }
   }
 
   private async request<T>(path: string, init: RequestInit = {}): Promise<T> {
@@ -40,4 +43,12 @@ export class OpenRouteServiceClient implements RoutingService {
     if (!response.ok) { const detail = await response.json().catch(() => null) as { error?: { message?: string } } | null; throw new RoutingProviderError(detail?.error?.message ?? `Routing provider returned ${response.status}`, response.status === 429 ? 429 : 502) }
     const value = await response.json() as T; this.cache.set(cacheKey, { value, expiresAt: Date.now() + 5 * 60_000 }); return value
   }
+}
+
+export const estimateTransitDurationSeconds = (roadDurationSeconds: number) => Math.round(roadDurationSeconds * TRANSIT_ROAD_TIME_MULTIPLIER + TRANSIT_WAIT_SECONDS)
+
+function estimateTransitRoute(route: RouteResult): RouteResult {
+  const adjustedLegs = route.legs.map((leg) => ({ ...leg, durationSeconds: Math.round(leg.durationSeconds * TRANSIT_ROAD_TIME_MULTIPLIER) }))
+  if (adjustedLegs[0]) adjustedLegs[0] = { ...adjustedLegs[0], durationSeconds: adjustedLegs[0].durationSeconds + TRANSIT_WAIT_SECONDS }
+  return { ...route, durationSeconds: adjustedLegs.reduce((sum, leg) => sum + leg.durationSeconds, 0), legs: adjustedLegs }
 }

@@ -6,6 +6,8 @@ Calendar is the home screen with day, week, and month views. Headings use three-
 
 A potential carpool may qualify through a close departure window or a close destination-arrival window. Match details compare the passenger's original arrival with the estimated carpool arrival and explicitly state how many minutes earlier or later the passenger would arrive.
 
+Changing transportation mode recalculates the displayed route duration and route geometry through the selected backend routing adapter. Route durations are estimates and use a `~` label. Driving, walking, and cycling use provider-specific profiles; transit remains an approximation until a live timetable-capable transit provider is integrated.
+
 Users can edit the date, departure time, transportation mode, carpool intent, and available seats for one dated trip occurrence. If a confirmed driver changes coordination-relevant details or stops driving, confirmed passengers are removed, their original trips are restored, and they receive in-app notifications.
 
 MVP excludes real payments, live GPS/navigation, push/SMS/email, public discovery, friend groups, machine learning, and complex route optimization.

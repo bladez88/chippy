@@ -255,7 +255,7 @@ export class PrismaStore implements ChippyStore {
     const ownTrips = (await this.prisma.trip.findMany({ where: { userId, departureAt: { gte: from, lte: to } }, orderBy: { departureAt: 'asc' } })).map(tripDto)
     const own = await Promise.all(ownTrips.map(async (trip) => {
       const plan = await this.routePlan(trip)
-      const route = await this.routing.getRoute(plan.stops, plan.driverTrip.transportationMode === 'TRANSIT' ? 'DRIVING' : plan.driverTrip.transportationMode)
+      const route = await this.routing.getRoute(plan.stops, plan.driverTrip.transportationMode)
       const [pendingRideRequestCount, passengerCount] = await Promise.all([
         this.prisma.rideRequest.count({ where: { driverTripId: trip.id, status: 'PENDING' } }),
         plan.carpoolId ? this.prisma.carpoolParticipant.count({ where: { carpoolId: plan.carpoolId, role: 'PASSENGER' } }) : 0,
@@ -467,9 +467,8 @@ export class PrismaStore implements ChippyStore {
     if (!row) throw new DomainError('NOT_FOUND', 'Trip not found', 404)
     const trip = tripDto(row)
     const plan = await this.routePlan(trip)
-    const mode = plan.driverTrip.transportationMode === 'TRANSIT' ? 'DRIVING' : plan.driverTrip.transportationMode
     const [route, originalRoute, driver, passengerUsers] = await Promise.all([
-      this.routing.getRoute(plan.stops, mode),
+      this.routing.getRoute(plan.stops, plan.driverTrip.transportationMode),
       this.routing.getRoute([trip.origin, trip.destination], trip.transportationMode),
       this.user(plan.driverTrip.userId),
       Promise.all(plan.passengers.map((item) => this.user(item.userId))),
@@ -486,7 +485,7 @@ export class PrismaStore implements ChippyStore {
     const trips = (await this.prisma.trip.findMany({ where: { userId, departureAt: { gte: new Date() } }, orderBy: { departureAt: 'asc' } })).map(tripDto)
     const features = await Promise.all(trips.map(async (trip) => {
       const plan = await this.routePlan(trip)
-      const routeMode = plan.driverTrip.transportationMode === 'TRANSIT' ? 'DRIVING' : plan.driverTrip.transportationMode
+      const routeMode = plan.driverTrip.transportationMode
       const route = await routing.getRoute(plan.stops, routeMode)
       const [driver, passengers] = await Promise.all([this.user(plan.driverTrip.userId), Promise.all(plan.passengers.map((item) => this.user(item.userId)))])
       const stops = [{ kind: 'ORIGIN', ...plan.driverTrip.origin, friendName: driver?.name }, ...plan.passengers.map((passenger, index) => ({ kind: 'PICKUP', ...passenger.origin, label: `${passengers[index]?.name}'s pickup`, friendName: passengers[index]?.name })), { kind: 'DESTINATION', ...plan.driverTrip.destination, friendName: null }]

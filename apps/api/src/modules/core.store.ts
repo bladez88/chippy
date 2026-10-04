@@ -128,7 +128,7 @@ export class CoreStore implements ChippyStore {
   async calendar(userId: string, start: string, end: string, _timezone = 'America/Vancouver', friendIds: string[] = []): Promise<CalendarEvent[]> {
     const from = DateTime.fromISO(start).startOf('day').toMillis(); const to = DateTime.fromISO(end).endOf('day').toMillis()
     const ownTrips = this.trips.filter((trip) => trip.userId === userId && within(trip.departureAt, from, to))
-    const own = await Promise.all(ownTrips.map(async (trip) => { const plan = this.routePlan(trip); const route = await this.routing.getRoute(plan.stops, plan.driverTrip.transportationMode === 'TRANSIT' ? 'DRIVING' : plan.driverTrip.transportationMode); const pendingRideRequestCount = this.requests.filter((request) => request.driverTripId === trip.id && request.status === 'PENDING').length; return this.event(trip, trip.carpoolStatus === 'MATCHED' ? 'CONFIRMED_CARPOOL' : 'OWN_TRIP', Math.max(1, Math.round(route.durationSeconds / 60)), plan.passengers.length, pendingRideRequestCount) }))
+    const own = await Promise.all(ownTrips.map(async (trip) => { const plan = this.routePlan(trip); const route = await this.routing.getRoute(plan.stops, plan.driverTrip.transportationMode); const pendingRideRequestCount = this.requests.filter((request) => request.driverTripId === trip.id && request.status === 'PENDING').length; return this.event(trip, trip.carpoolStatus === 'MATCHED' ? 'CONFIRMED_CARPOOL' : 'OWN_TRIP', Math.max(1, Math.round(route.durationSeconds / 60)), plan.passengers.length, pendingRideRequestCount) }))
     const matchGroups = await Promise.all(ownTrips.map(async (trip) => trip.carpoolStatus !== 'LOOKING_FOR_RIDE' ? [] : (await this.matches(userId, trip.id)).map(({ driver, passenger, detourMinutes, distanceMeters, originalArrivalAt, carpoolArrivalAt, arrivalDifferenceMinutes, pickupAt }) => {
       const friendTrip = driver.userId === userId ? passenger : driver
       return { ...this.event(friendTrip, 'POTENTIAL_MATCH'), id: `match-${trip.id}-${friendTrip.id}`, sourceId: `${driver.id}:${passenger.id}`, title: `${this.user(friendTrip.userId)?.name} → ${friendTrip.destination.label}`, subtitle: `Potential carpool · ${detourMinutes} min detour`, friend: this.user(friendTrip.userId), detourMinutes, distanceMeters, originalArrivalAt, carpoolArrivalAt, arrivalDifferenceMinutes, pickupAt, color: '#f28b5b' } satisfies CalendarEvent
@@ -280,8 +280,7 @@ export class CoreStore implements ChippyStore {
     const trip = this.trips.find((item) => item.id === tripId && item.userId === userId)
     if (!trip) throw new DomainError('NOT_FOUND', 'Trip not found', 404)
     const plan = this.routePlan(trip)
-    const mode = plan.driverTrip.transportationMode === 'TRANSIT' ? 'DRIVING' : plan.driverTrip.transportationMode
-    const [route, originalRoute] = await Promise.all([this.routing.getRoute(plan.stops, mode), this.routing.getRoute([trip.origin, trip.destination], trip.transportationMode)])
+    const [route, originalRoute] = await Promise.all([this.routing.getRoute(plan.stops, plan.driverTrip.transportationMode), this.routing.getRoute([trip.origin, trip.destination], trip.transportationMode)])
     const departure = DateTime.fromISO(plan.driverTrip.departureAt)
     let elapsedSeconds = 0
     const stopTimes = plan.stops.map((_stop, index) => { if (index > 0) elapsedSeconds += route.legs[index - 1]?.durationSeconds ?? 0; return departure.plus({ seconds: elapsedSeconds }).toUTC().toISO()! })
@@ -306,7 +305,7 @@ export class CoreStore implements ChippyStore {
     const own = this.trips.filter((trip) => trip.userId === userId && new Date(trip.departureAt).getTime() >= Date.now()).sort((a, b) => a.departureAt.localeCompare(b.departureAt))
     const features = await Promise.all(own.map(async (trip) => {
       const plan = this.routePlan(trip)
-      const routeMode = plan.driverTrip.transportationMode === 'TRANSIT' ? 'DRIVING' : plan.driverTrip.transportationMode
+      const routeMode = plan.driverTrip.transportationMode
       const route = await routing.getRoute(plan.stops, routeMode)
       const stops = [
         { kind: 'ORIGIN', label: plan.driverTrip.origin.label, address: plan.driverTrip.origin.address, latitude: plan.driverTrip.origin.latitude, longitude: plan.driverTrip.origin.longitude, friendName: this.user(plan.driverTrip.userId)?.name },

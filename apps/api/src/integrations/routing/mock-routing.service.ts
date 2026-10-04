@@ -11,7 +11,7 @@ export class MockRoutingService implements RoutingService {
   async searchLocations(query: string) { const value = query.toLowerCase(); return fixtures.filter((item) => `${item.label} ${item.address}`.toLowerCase().includes(value)).slice(0, 5) }
   async getRoute(stops: Location[], mode: TransportationMode): Promise<RouteResult> {
     const speed = { DRIVING: 9.6, TRANSIT: 7, CYCLING: 4.5, WALKING: 1.35 }[mode]
-    const legs = stops.slice(1).map((stop, index) => { const distanceMeters = haversine(stops[index]!, stop); return { distanceMeters, durationSeconds: distanceMeters / speed } })
+    const legs = stops.slice(1).map((stop, index) => { const distanceMeters = haversine(stops[index]!, stop); return { distanceMeters, durationSeconds: distanceMeters / speed + (mode === 'TRANSIT' && index === 0 ? 8 * 60 : 0) } })
     const distanceMeters = legs.reduce((sum, leg) => sum + leg.distanceMeters, 0)
     return { distanceMeters, durationSeconds: legs.reduce((sum, leg) => sum + leg.durationSeconds, 0), geometry: stops.map((stop) => [stop.longitude, stop.latitude]), legs }
   }

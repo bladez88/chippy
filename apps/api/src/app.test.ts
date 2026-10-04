@@ -51,6 +51,23 @@ describe('Chippy API vertical slice', () => {
     expect(rejected.body.error).toMatchObject({ code: 'INVALID_CREDENTIALS', message: 'Email or password is incorrect' })
   })
   it('returns calendar events', async () => { const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000); const response = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}`).set('Cookie', cookie); expect(response.status).toBe(200); expect(response.body.events.length).toBeGreaterThan(0) })
+  it('recalculates calendar duration for each transportation mode', async () => {
+    const trip = store.trips.find((item) => item.id === 'trip-jimmy')!
+    trip.carpoolStatus = 'NONE'
+    const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000)
+    const duration = async (mode: typeof trip.transportationMode) => {
+      trip.transportationMode = mode
+      const events = await store.calendar('user-jimmy', start.toISOString().slice(0, 10), end.toISOString().slice(0, 10))
+      return events.find((event) => event.sourceId === trip.id)!.estimatedDurationMinutes!
+    }
+    const driving = await duration('DRIVING')
+    const transit = await duration('TRANSIT')
+    const cycling = await duration('CYCLING')
+    const walking = await duration('WALKING')
+    expect(transit).toBeGreaterThan(driving)
+    expect(cycling).toBeGreaterThan(driving)
+    expect(walking).toBeGreaterThan(cycling)
+  })
   it('compares accepted friend schedules without exposing private locations', async () => {
     const start = new Date(); const end = new Date(Date.now() + 3 * 86400_000)
     const response = await request(app).get(`/api/calendar?start=${start.toISOString().slice(0,10)}&end=${end.toISOString().slice(0,10)}&friendIds=user-daniel`).set('Cookie', cookie)

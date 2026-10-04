@@ -11,6 +11,47 @@ Chippy is a mobile-first private carpool planner for friends. It combines recurr
 - Trip creation, friendships, matching, ride requests, carpools, notifications, and map/calendar reads use the selected store. Multi-record ride and carpool transitions are transactional in the Prisma adapter.
 - Calendar users can compare one or more accepted friends through privacy-safe schedule blocks. Trip occurrences can be edited; coordination-changing edits leave or cancel affected carpools and notify the other participants.
 
+## Technology stack
+
+| Layer | Current technology |
+| --- | --- |
+| Language and runtime | TypeScript, Node.js 22+, npm workspaces |
+| Web application | React 19, Vite 7, React Router, TanStack Query, date-fns |
+| Mobile/PWA | Responsive CSS, safe-area support, Vite PWA/Workbox |
+| Maps | Leaflet, React Leaflet, OpenStreetMap-compatible tiles |
+| API | Express 5, Zod validation, signed HTTP-only session cookies |
+| Authentication | Email/password with salted scrypt hashes; optional Google Identity Services |
+| Persistence | Prisma 6 with PostgreSQL/PostGIS, or the in-memory `CoreStore` for demos/tests |
+| Routing and search | OpenRouteService through the API, or a deterministic mock provider |
+| Testing | Vitest, React Testing Library, Supertest |
+| Deployment | Vercel for the web app, Render for the API, TigerData or another PostgreSQL/PostGIS host |
+
+Google Maps variables are placeholders for a possible coordinated provider migration; Google Maps is not part of the active map or routing path.
+
+## Architecture at a glance
+
+```text
+Mobile/desktop browser
+        │
+        ▼
+apps/web (React + Vite PWA)
+        │  REST/JSON + HTTP-only session cookie
+        ▼
+apps/api (Express)
+        ├── domain workflows and authorization
+        ├── routing provider integration
+        └── ChippyStore interface
+              ├── CoreStore (memory/demo/tests)
+              └── PrismaStore
+                     ▼
+              PostgreSQL + PostGIS
+
+packages/shared
+  └── Zod contracts, inferred DTOs, enums, and matching rules used by web and API
+```
+
+The browser never connects directly to PostgreSQL, Prisma, PostGIS, or OpenRouteService. The API owns authentication, privacy filtering, matching, routing requests, and persistent transactions. See [`docs/architecture.md`](docs/architecture.md) for boundaries and [`docs/database.md`](docs/database.md) for persistence details.
+
 ## Quick start
 
 Requirements: Node.js 22+ and npm. Docker Desktop is optional until using PostgreSQL/PostGIS.
@@ -22,7 +63,27 @@ cp apps/web/.env.example apps/web/.env
 npm run dev
 ```
 
-Open `http://localhost:5173`. Use **Demo as Jimmy** to request Daniel's seeded ride. Log out and use **Demo as Daniel** to accept it.
+`npm run dev` builds the shared contracts first, then starts both processes:
+
+- Frontend: `http://localhost:5173`
+- Backend: `http://localhost:3000`
+- API health check: `http://localhost:3000/api/health`
+
+Open the frontend URL. Use **Demo as Jimmy** to request Daniel's seeded ride. Log out and use **Demo as Daniel** to accept it.
+
+### Run the frontend and backend separately
+
+Use two terminals when you want independent logs or restarts:
+
+```bash
+# Terminal 1 — Express API on port 3000
+npm run dev:api
+
+# Terminal 2 — Vite web app on port 5173
+npm run dev:web
+```
+
+Both commands build `packages/shared` before starting so a fresh clone has the generated shared package required by the workspace imports. The web app reads its API base URL from `apps/web/.env`; local setup should keep `VITE_API_URL=http://localhost:3000/api`.
 
 The demo requires no cloud credentials when `DATA_STORE=memory`. Use `DATA_STORE=prisma` after configuring PostgreSQL.
 
@@ -97,6 +158,8 @@ Enable only the APIs each key needs. The Google variables are reserved for a pos
 
 Do not use the public OpenStreetMap Nominatim endpoint for client-side autocomplete, and do not treat the community OSM raster tile server as a production service with an SLA. Use a hosted provider or self-host before meaningful public traffic.
 
+OpenRouteService provides Chippy's driving, walking, and cycling route profiles, but it does not provide public-transit itineraries. Until a transit-capable provider is integrated, transit duration is explicitly treated as an approximation: Chippy uses road geometry with a transfer/wait allowance and labels displayed route durations with `~`. It is not based on live agency schedules, service disruptions, or traffic.
+
 ## Database setup
 
 Use the memory adapter for a disposable demo:
@@ -160,6 +223,8 @@ The checked-in rewrite proxies `/api/*` from the Vercel deployment to `https://c
 ## Commands
 
 - `npm run dev` — web and API development servers
+- `npm run dev:web` — frontend development server only
+- `npm run dev:api` — backend development server only
 - `npm run build` — production builds for shared, API, and web
 - `npm run typecheck` — strict TypeScript checks
 - `npm test` — unit and API tests
