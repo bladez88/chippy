@@ -17,6 +17,23 @@ app.use(cookieParser())
 app.use((_req, res, next) => { res.locals.requestId = randomUUID(); res.setHeader('x-request-id', res.locals.requestId); next() })
 
 app.get('/api/health', (_req, res) => res.json({ status: 'ok' }))
+const normalizeEmail = z.string().trim().toLowerCase().pipe(z.email())
+app.post('/api/auth/register', async (req, res, next) => {
+  try {
+    const input = z.object({ email: normalizeEmail, name: z.string().trim().min(1).max(80), password: z.string().min(8).max(128) }).parse(req.body)
+    const user = await store.createAccount(input.email, input.name, input.password)
+    issueSession(res, user.id)
+    res.status(201).json({ user })
+  } catch (error) { next(error) }
+})
+app.post('/api/auth/login', async (req, res, next) => {
+  try {
+    const input = z.object({ email: normalizeEmail, password: z.string().min(1).max(128) }).parse(req.body)
+    const user = await store.authenticateAccount(input.email, input.password)
+    issueSession(res, user.id)
+    res.json({ user })
+  } catch (error) { next(error) }
+})
 app.post('/api/auth/dev-login', (req, res) => {
   if (!env.ENABLE_DEV_AUTH || env.NODE_ENV === 'production') return res.status(404).end()
   const parsed = z.object({ userId: z.string() }).safeParse(req.body)
@@ -28,8 +45,9 @@ app.post('/api/auth/google', async (req, res, next) => {
   try {
     const { credential } = z.object({ credential: z.string().min(1) }).parse(req.body)
     const google = await verifyGoogleCredential(credential)
-    let user = store.users.find((item) => item.email === google.email)
-    if (!user) { user = { id: randomUUID(), email: google.email, name: google.name, avatarUrl: google.avatarUrl, timezone: 'America/Vancouver' }; store.users.push(user) }
+    const email = google.email.trim().toLowerCase()
+    let user = store.users.find((item) => item.email.toLowerCase() === email)
+    if (!user) { user = { id: randomUUID(), email, name: google.name, avatarUrl: google.avatarUrl, timezone: 'America/Vancouver' }; store.users.push(user) }
     issueSession(res, user.id); res.json({ user })
   } catch (error) { next(error) }
 })

@@ -6,4 +6,4 @@ The web app is organized by product feature. TanStack Query owns server state, f
 
 The API boundary is route/controller → service → repository → database. The current runnable development adapter packages the vertical-slice workflows in `CoreStore`; the Prisma schema is the production persistence contract. External identity and routing providers are isolated in integrations. Multi-record ride acceptance is designed as a transaction.
 
-Sessions are signed HTTP-only cookies. Development login and mock routing are configuration-gated and forbidden in production. Friend match DTOs omit exact pickup details until acceptance.
+Sessions are signed HTTP-only cookies. Email/password accounts use scrypt password hashes; Google sign-in is optional. Account profiles and password hashes currently live in the in-memory `CoreStore`, so newly created accounts are reset when the API restarts. Development login and mock routing are configuration-gated and forbidden in production. Friend match DTOs omit exact pickup details until acceptance.
